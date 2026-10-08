@@ -1,0 +1,43 @@
+.step-welcome-art-layer {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 0.25rem);
+  transform: translateX(-50%);
+  width: min(100%, 32rem);
+  height: clamp(12rem, 32vh, 22rem);
+  background: transparent;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-welcome-reference-image {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* 透明边缘与两种配色的亮度分布不同；按图形视觉重心校准，不按整张画布的边界校准。 */
+.step-welcome-art-light {
+  transform: translate(0.963%, -4.087%);
+}
+
+.step-welcome-art-dark {
+  display: none;
+  transform: translate(-5.666%, -1.996%);
+}
+
+/* 两张独立透明图跟随软件主题；不用反相滤镜，不创建与原生背景有色差的图片底板。 */
+html.dark .step-welcome-art-light {
+  display: none;
+}
+
+html.dark .step-welcome-art-dark {
+  display: block;
+}

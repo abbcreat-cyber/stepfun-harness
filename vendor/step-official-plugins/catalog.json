@@ -1,0 +1,53 @@
+{
+  "format": 1,
+  "plugins": [
+    {
+      "name": "node-repl-host",
+      "version": "0.6.0",
+      "description": "Shared node_repl runtime host for ZCode official capabilities. Not user-facing: it carries no skill and appears in no marketplace listing; Browser Use and Computer Use enable it and contribute their own skills, docs and runtime assets.",
+      "defaultEnabled": true
+    },
+    {
+      "name": "android-emulator",
+      "version": "0.1.0",
+      "description": "Provides Android development workflows and emulator automation for ZCode.",
+      "defaultEnabled": false
+    },
+    {
+      "name": "browser-use",
+      "version": "0.5.1",
+      "description": "Built-in browser automation runtime and guidance for Desktop IAB and explicitly enabled CLI-managed headless CDP: open, navigate, inspect, click, type, screenshot, record workspace WebM videos, and verify web pages and local dev targets.",
+      "defaultEnabled": true
+    },
+    {
+      "name": "documents",
+      "version": "0.1.7",
+      "description": "DOCX document production skills, published as an official ZCode plugin.",
+      "defaultEnabled": true
+    },
+    {
+      "name": "pdf",
+      "version": "0.1.7",
+      "description": "PDF document production skills, published as an official ZCode plugin.",
+      "defaultEnabled": true
+    },
+    {
+      "name": "presentations",
+      "version": "0.1.7",
+      "description": "PPTX presentation production skills, published as an official ZCode plugin.",
+      "defaultEnabled": true
+    },
+    {
+      "name": "spreadsheets",
+      "version": "0.1.7",
+      "description": "XLSX spreadsheet production skills, published as an official ZCode plugin.",
+      "defaultEnabled": true
+    },
+    {
+      "name": "skill-creator",
+      "version": "0.1.0",
+      "description": "Create, edit, and iterate local ZCode skills.",
+      "defaultEnabled": true
+    }
+  ]
+}

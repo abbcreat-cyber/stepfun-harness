@@ -1,0 +1,40 @@
+{
+  "name": "stepcode-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ZCode 桌面壳 ↔ Step-Code 适配层（社区维护）：stdio JSONL/RPC 客户端、ZCode Protocol 门面、会话与工作流适配，以及复用 Step 原生 SDK 的供应商通信扩展。依赖当前 workspace 公共契约，mock 仅用于测试。壳侧接线 Derives from zai-org/ZCode (Apache-2.0)；jsonl/rpc-protocol/rpc-client/mock 移植自 stepfun-ai/Step-Code (MIT, © 2025 Mario Zechner, © 2026 Step Code)，各文件头随附原许可文本。",
+  "license": "(Apache-2.0 AND MIT)",
+  "bin": {
+    "step-rpc-mock": "./mock/step-rpc-mock.mjs",
+    "zcode-bridge": "./bin/zcode-bridge.mjs"
+  },
+  "type": "module",
+  "main": "./src/rpc-client.mjs",
+  "exports": {
+    ".": "./src/rpc-client.mjs",
+    "./jsonl": "./src/jsonl.mjs",
+    "./rpc-protocol": "./src/rpc-protocol.mjs",
+    "./wire-shapes": "./src/wire-shapes.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "mock": "node mock/step-rpc-mock.mjs",
+    "bridge": "node bin/zcode-bridge.mjs",
+    "bridge:smoke": "node tools/bridge-smoke.mjs",
+    "check:schema": "tsx tools/schema-probe.mjs --validate",
+    "check:switch": "tsx tools/stepcode-switch-check.mts"
+  },
+  "dependencies": {
+    "@zcode/adapters": "workspace:*",
+    "@zcode/bootstrap": "workspace:*",
+    "@zcode/core": "workspace:*",
+    "@zcode/dynamic-workflow": "workspace:*",
+    "@zcode/dynamic-workflow-runtime": "workspace:*",
+    "@zcode/model-option-map": "workspace:*",
+    "@zcode/shared": "workspace:*",
+    "tsx": "^4.22.0"
+  },
+  "engines": {
+    "node": ">=18.11"
+  }
+}

@@ -1,0 +1,312 @@
+.step-connections-console {
+  --step-connection-blue: #267ec5;
+  position: relative;
+  isolation: isolate;
+  container-type: inline-size;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  background: var(--color-background);
+}
+.step-connections-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  background: radial-gradient(
+    ellipse at 84% 16%,
+    color-mix(in srgb, var(--step-connection-blue) 9%, transparent),
+    transparent 62%
+  );
+}
+.step-connections-art {
+  position: absolute;
+  top: -6.5rem;
+  right: -7rem;
+  width: min(90%, 36rem);
+  height: 30rem;
+  object-fit: contain;
+  opacity: 0.27;
+  mask-image:
+    linear-gradient(90deg, transparent, #000 30%), linear-gradient(#000 35%, transparent 100%);
+  mask-composite: intersect;
+}
+.step-connections-art-dark {
+  display: none;
+}
+html.dark .step-connections-console {
+  --step-connection-blue: #82c4ff;
+}
+html.dark .step-connections-art-light {
+  display: none;
+}
+html.dark .step-connections-art-dark {
+  display: block;
+  opacity: 0.32;
+}
+.step-connections-heading,
+.step-connections-grid {
+  position: relative;
+}
+.step-connections-heading {
+  min-height: 8.75rem;
+  padding-block: 0.25rem 1.5rem;
+  max-width: 32rem;
+}
+.step-connections-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--step-connection-blue);
+  letter-spacing: 0.16em;
+  margin-bottom: 0.9rem;
+  font-weight: 600;
+}
+.step-connections-heading h2 {
+  margin: 0 0 0.65rem;
+  color: var(--color-foreground);
+}
+.step-connections-heading p {
+  margin: 0;
+  max-width: 25rem;
+  line-height: 1.7;
+  text-wrap: balance;
+}
+.step-connections-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+.step-connection-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, var(--step-connection-blue) 20%);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  box-shadow: 0 2px 9px color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  transition: border-color 0.2s ease;
+}
+.step-connection-card:focus-within {
+  border-color: var(--step-connection-blue);
+}
+.step-connection-card-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.step-connection-card-heading h3 {
+  margin: 0;
+  line-height: 1.4;
+}
+.step-connection-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid color-mix(in srgb, var(--step-connection-blue) 18%, transparent);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--step-connection-blue) 8%, transparent);
+  color: var(--step-connection-blue);
+  flex-shrink: 0;
+}
+.step-connection-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+  padding: 0.25rem 0.45rem;
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  color: var(--color-foreground-subtle);
+  white-space: nowrap;
+}
+.step-connection-state[data-connected="true"] {
+  background: color-mix(in srgb, var(--color-success) 9%, transparent);
+  color: var(--color-success);
+}
+.step-connection-description {
+  margin: 1rem 0 1.25rem;
+  min-height: 3.4em;
+  line-height: 1.7;
+}
+.step-connection-form {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: auto;
+}
+.step-connection-key-label {
+  line-height: 1.4;
+}
+.step-connection-form input {
+  height: 2.6rem;
+  border-color: var(--color-border);
+  background: var(--color-input);
+  border-radius: 0.5rem;
+}
+.step-connection-form input:focus-visible {
+  border-color: var(--step-connection-blue);
+}
+.step-connection-connect {
+  width: 100%;
+  min-height: 2.6rem;
+  gap: 0.5rem;
+  background: var(--step-connection-blue);
+  color: #fff;
+  box-shadow: none;
+}
+html.dark .step-connection-connect {
+  background: #a8d3f6;
+  color: #13283a;
+}
+.step-connection-connect:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--step-connection-blue) 84%, var(--color-foreground));
+}
+html.dark .step-connection-connect:hover:not(:disabled) {
+  background: #c2e1fa;
+}
+.step-connection-connect:disabled {
+  opacity: 0.4;
+}
+.step-connection-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+.step-connection-manage {
+  padding-inline: 0.35rem;
+  color: var(--step-connection-blue);
+  gap: 0.25rem;
+  white-space: normal;
+  text-align: right;
+}
+.step-connection-feedback {
+  padding-top: 0.75rem;
+  margin: 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.step-connections-stars {
+  position: absolute;
+  inset: 0 0 45% 32%;
+}
+.step-connections-stars i {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--step-connection-blue);
+  opacity: 0.18;
+  animation: step-connection-star 5s ease-in-out infinite;
+}
+.step-connections-stars i:nth-child(1) {
+  left: 20%;
+  top: 25%;
+}
+.step-connections-stars i:nth-child(2) {
+  left: 44%;
+  top: 62%;
+  animation-delay: -2s;
+}
+.step-connections-stars i:nth-child(3) {
+  left: 68%;
+  top: 16%;
+  animation-delay: -3.5s;
+}
+.step-connections-stars i:nth-child(4) {
+  left: 85%;
+  top: 54%;
+  animation-delay: -1s;
+}
+.step-connections-stars i:nth-child(5) {
+  left: 38%;
+  top: 42%;
+  animation-delay: -4s;
+}
+.step-connections-stars i:nth-child(6) {
+  left: 75%;
+  top: 76%;
+  animation-delay: -2.5s;
+}
+.step-connections-stars i:nth-child(7) {
+  left: 12%;
+  top: 66%;
+  animation-delay: -0.5s;
+}
+.step-connections-stars i:nth-child(8) {
+  left: 93%;
+  top: 22%;
+  animation-delay: -1.5s;
+}
+.step-connections-light-trace {
+  position: absolute;
+  width: 7rem;
+  height: 1px;
+  right: 6%;
+  top: 5rem;
+  background: linear-gradient(90deg, transparent, var(--step-connection-blue), transparent);
+  opacity: 0;
+  transform: rotate(-35deg);
+  animation: step-connection-trace 9s ease-in-out infinite;
+}
+@keyframes step-connection-star {
+  0%,
+  100% {
+    opacity: 0.12;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 0.58;
+    transform: scale(1.25);
+  }
+}
+@keyframes step-connection-trace {
+  0%,
+  70%,
+  100% {
+    opacity: 0;
+    transform: translate(-2rem, 1.5rem) rotate(-35deg);
+  }
+  80% {
+    opacity: 0.24;
+  }
+  93% {
+    opacity: 0;
+    transform: translate(2rem, -1.5rem) rotate(-35deg);
+  }
+}
+@container (max-width: 28rem) {
+  .step-connections-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .step-connections-heading {
+    min-height: 8rem;
+    padding-right: 12%;
+  }
+  .step-connections-art {
+    right: -10rem;
+    opacity: 0.18;
+  }
+  .step-connection-description {
+    min-height: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-connections-stars i,
+  .step-connections-light-trace {
+    animation: none;
+  }
+  .step-connection-card {
+    transition: none;
+  }
+}

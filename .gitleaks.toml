@@ -1,0 +1,13 @@
+title = "StepFun Harness publication checks"
+[extend]
+useDefault = true
+[[allowlists]]
+description = "Upstream dependency inventory contains SHA-256 content hashes, not credentials"
+condition = "AND"
+paths = ['''(^|/)third-party/inventory\.json$''']
+regexTarget = "secret"
+regexes = ['''^[a-fA-F0-9]{64}$''']
+[[allowlists]]
+description = "Explicit nonfunctional test fixture keys"
+regexTarget = "secret"
+regexes = ['''^sk-fixture-[a-z0-9-]+$''']
