@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { stripSourceMappingUrlCommentsInDirectory } from "../packages/desktop/scripts/packaged-sourcemap-cleanup.mjs";
 
 test("packaging preserves executable template strings inside the bundled runtime", async t => {
@@ -15,4 +16,15 @@ test("packaging preserves executable template strings inside the bundled runtime
   stripSourceMappingUrlCommentsInDirectory(root);
   assert.equal(await readFile(file, "utf8"), source);
   assert.ok((await import(pathToFileURL(file).href)).result.endsWith("fixture"));
+});
+
+test("adapter loader preserves CommonJS JSON used by Windows command decoding", async () => {
+  const requireAdapter = createRequire(new URL("../packages/stepcode-adapter/package.json", import.meta.url));
+  const { register } = await import(pathToFileURL(requireAdapter.resolve("tsx/esm/api")).href);
+  const unregister = register();
+  try {
+    const requireTools = createRequire(new URL("../apps/zcode-cli/packages/adapters/package.json", import.meta.url));
+    const iconv = requireTools("iconv-lite");
+    assert.equal(iconv.decode(Buffer.from([0xd6, 0xd0, 0xce, 0xc4]), "cp936"), "中文");
+  } finally { unregister(); }
 });

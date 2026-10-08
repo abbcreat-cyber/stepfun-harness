@@ -30,6 +30,7 @@ StepFun Harness connects the Step Code agent runtime to a full desktop interface
 | **Visible multi-agent workflows** | Inspect phases, parallel tasks, status, and artifacts; save workflows for reuse. |
 | **Bundled document plugins** | Word, PDF, presentations, and spreadsheet skills with supporting assets; activate with `@plugin`. |
 | **Mini task strip** | Follow active tasks and counts outside the main window. |
+| **Unified updates** | Desktop releases come from this GitHub repository; Step runtime releases come from the official source, with separate status and progress. |
 | **Session statistics** | Model/tool time, first-token latency, output speed, tokens, and cache usage. |
 | **Two built-in hooks** | First-principles reminder and opening explanation, enabled by default and independently configurable. |
 | **Interactive and continuing work** | Structured questions, follow-up messages, cancellation, and persistent scheduled tasks. |
@@ -116,4 +117,5 @@ Our focus is connecting UI and execution faithfully: inputs, tools, interactions
 - **[Codex](https://openai.com/codex/)** — references for task interactions, Mini, and progress communication, plus development assistance. Similar UX does not imply copying proprietary implementations or official endorsement.
 
 Thank you for helping the community build more useful AI tools.
+
 

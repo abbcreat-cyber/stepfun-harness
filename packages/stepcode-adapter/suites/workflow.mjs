@@ -261,7 +261,7 @@ test("cancelled workflow resumes after restart and reuses its journal", async ()
     await new Promise((r) => setTimeout(r, 200));
     service.cancel(run.runId);
     await service.active.get(run.runId)?.promise;
-    assert.equal(service.detail(run.runId).run.status, "stopped");
+    assert.equal(service.detail(run.runId).run.status, "stopped", JSON.stringify(service.detail(run.runId).run.failure));
     await service.close();
     service = new StepWorkflowService(options);
     const resumed = await service.resume(run.runId, "resume-tool");
@@ -274,7 +274,8 @@ test("cancelled workflow resumes after restart and reuses its journal", async ()
     );
   } finally {
     await service.close();
-    await rm(root, { recursive: true, force: true });
+    // Windows 子进程退出后，内核目录句柄可能稍晚释放；仅为夹具清理提供有限重试。
+    await rm(root, { recursive: true, force: true, maxRetries:20, retryDelay:100 });
   }
 });
 

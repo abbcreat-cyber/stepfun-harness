@@ -25,7 +25,7 @@
 | `conversations/` | 会话 |
 | `runtime/` | 应用内更新的 Step 底座 |
 
-“设置 → 钩子 → 已安装”可独立开关两个内置钩子，下一轮生效。界面的“检查更新”检查 Step 底座；桌面新版本在本仓库 Releases 下载。
+“设置 → 钩子 → 已安装”可独立开关两个内置钩子，下一轮生效。更新窗口分别检查阶跃星辰 Harness 软件和 Step Code 底座。软件更新来自本仓库发布的 GitHub Release。
 
 ### 从源码开发
 
@@ -55,7 +55,8 @@ The package includes Step 0.1.3, Node, Git Bash, a relocatable Python document r
 
 This build is unsigned. Windows may show an unknown publisher; download from this repository and verify the release SHA-256 checksums. Uninstall through Windows Settings → Apps. User data is kept separately at `%APPDATA%/StepFun Harness` and retained on uninstall. `HARNESS_HOME` can override this location.
 
-The hooks page controls **First-principles reminder** and **Opening explanation**, both enabled by default and effective on the next turn. Check for updates updates the Step runtime; desktop updates are published in GitHub Releases.
+The hooks page controls **First-principles reminder** and **Opening explanation**, both enabled by default and effective on the next turn. The unified update center checks both the Harness desktop app and the Step runtime. Desktop updates come from published GitHub Releases in this repository.
 
 Source development requires Node 24, pnpm 10.33.2, Git for Windows and the real Step CLI. Follow the commands above. Source launches default to `~/.stepfun-harness`; `HARNESS_STEP_BIN` selects a CLI and `HARNESS_DOCUMENT_RUNTIME` selects document tools. See [BUILDING.md](BUILDING.md) for a self-contained installer build, and [LICENSES.md](../LICENSES.md) for third-party terms.
+
 
