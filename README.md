@@ -111,4 +111,14 @@ pnpm harness:dev
 
 谢谢这些项目，让社区能够继续把 AI 工具做得更实用。
 
+## 关注作者
+
+喜欢这个项目？欢迎来抖音找我，聊聊 AI 工具与开源折腾。
+
+**琳如烟～AI工程师** · 抖音号：**`linruyan888`**
+
+打开抖音搜索上面的账号，或扫描下方抖音码。手机浏览时，可以保存图片后在抖音扫一扫中识别。
+
+<img src="docs/screenshots/author-douyin.png" alt="琳如烟～AI工程师的抖音码，抖音号 linruyan888" width="300" />
+
 

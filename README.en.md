@@ -111,4 +111,14 @@ Our focus is connecting UI and execution faithfully: inputs, tools, interactions
 
 Thank you for helping the community build more useful AI tools.
 
+## Follow the creator
+
+Enjoying the project? Find me on Douyin to chat about AI tools and open-source tinkering.
+
+**琳如烟～AI工程师** · Douyin ID: **`linruyan888`**
+
+Search for this ID in Douyin or scan the code below. On mobile, save the image and open it in Douyin's scanner.
+
+<img src="docs/screenshots/author-douyin.png" alt="Douyin code for 琳如烟～AI工程师, ID linruyan888" width="300" />
+
 
