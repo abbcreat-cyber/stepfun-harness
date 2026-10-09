@@ -106,8 +106,9 @@ export function EvalWorkflowSnippetToolCallBlock(context: ToolCallBlockRenderCon
         sourceLabel={context.sourceLabel}
         primaryText={durationNode}
         summaryContentSeparator="·"
-        statusLabel={failed ? intl.formatMessage({ id: "chat.toolCall.status.failed" }) : undefined}
+        statusLabel={failed ? intl.formatMessage({ id: "chat.toolCall.status.failed" }) : !running && snippet?.ok ? intl.formatMessage({ id: "chat.toolCall.status.completed" }) : undefined}
         statusTooltip={failed ? error : undefined}
+        showStatusLabel={!running && snippet?.ok === true}
         showFailureStatus={failed}
         isRunning={running}
         renderContent={hasDetails ? renderContent : undefined}

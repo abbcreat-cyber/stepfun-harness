@@ -11,6 +11,7 @@ import {
   formatModelPickerValue,
 } from "./dependencies.mjs";
 import { persistedWorkflowModel } from "./model-selection.mjs";
+import { snippetResult, validateSnippetMetadata } from "./snippet-result.mjs";
 
 export async function readSource(service, inline, path) {
   if ((inline !== undefined) === (path !== undefined))
@@ -31,6 +32,8 @@ export async function readSource(service, inline, path) {
 }
 
 export async function evalSnippet(input, toolCallId, requestSignal) {
+  const startedAt = Date.now();
+  validateSnippetMetadata(input);
   const code = await readSource(this, input.code, input.path);
   const timeoutMs = input.timeoutMs ?? 60000;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000)
@@ -41,7 +44,7 @@ export async function evalSnippet(input, toolCallId, requestSignal) {
     ? { commands: [], diagnostics }
     : engine.collectWorldRunCommands(program, engine.collectSites(program));
   if (commands.diagnostics.length)
-    return { ok: false, diagnostics: commands.diagnostics, executed: false };
+    return snippetResult({ ok: false, diagnostics: commands.diagnostics, executed: false }, startedAt);
   // deadline 覆盖等待确认，否则 MCP 超时后确认仍会永久悬挂。
   const controller = new AbortController();
   const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs), ...(requestSignal ? [requestSignal] : [])]);
@@ -50,10 +53,10 @@ export async function evalSnippet(input, toolCallId, requestSignal) {
     if (commands.commands.length) {
       const answer = await this.options.confirm({
         toolCallId, toolName: "EvalWorkflowSnippet",
-        input: { code, commands: commands.commands }, hash: "snippet", display: undefined, signal,
+        input: { code, ...(input.title !== undefined ? { title: input.title } : {}), commands: commands.commands }, hash: "snippet", display: undefined, signal,
       });
       if (!answer.approved || signal.aborted)
-        return { ok: false, status: signal.aborted ? "cancelled" : "denied", executed: false };
+        return snippetResult({ ok: false, status: signal.aborted ? "cancelled" : "denied", executed: false }, startedAt);
     }
     signal.throwIfAborted();
     const execution = createNodeExecutionAdapter();
@@ -65,7 +68,7 @@ export async function evalSnippet(input, toolCallId, requestSignal) {
       { code, cwd: this.options.cwd, timeoutMs, trace: { traceId: toolCallId ?? randomUUID() } },
       { signal },
     );
-    return { ok: result.kind === "completed", ...result };
+    return snippetResult({ ok: result.kind === "completed", ...result }, startedAt);
   } finally {
     this.snippets.delete(controller);
   }

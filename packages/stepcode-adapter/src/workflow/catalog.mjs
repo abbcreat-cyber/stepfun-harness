@@ -36,7 +36,7 @@ export function workflowToolName(name) {
 }
 export function expandWorkflowCommand(text) {
   return /^\/workflow(?:\s|$)/.test(text)
-    ? `请使用原 ZCode 工作流机制完成以下任务。先用一句中文说明计划；如果当前会话未读过指南，调用 ReadWorkflowGuide 完整原版一次。按原技能的真实依赖和并行 join 规则编写脚本，再调用 CreateWorkflow 展示确认图，等待用户批准。不要把连续 await 的脚本说成并行，不要用命令行绕过确认执行。\n${text.replace(/^\/workflow\s*/, "")}`
+    ? `请使用原 ZCode 工作流机制完成以下任务。先用一句中文说明计划；如果当前会话未读过指南，调用 ReadWorkflowGuide 完整原版一次。按原技能的真实依赖和并行 join 规则编写脚本，再调用 CreateWorkflow 展示确认图，等待用户批准。不要把连续 await 的脚本说成并行，不要用命令行绕过确认执行。规模随用户需求：仅验证功能时使用 1–2 个短任务的最小工作流，不扩展成完整环境审计；只有脚本确实依赖命令或解析结果时才调用 EvalWorkflowSnippet。\n${text.replace(/^\/workflow\s*/, "")}`
     : text;
 }
 export function delegatesWorkflowApproval(request) {

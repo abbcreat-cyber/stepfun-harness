@@ -15,6 +15,7 @@
 import "../suites/jsonl.mjs";
 import "../suites/initial-session.mjs";
 import "../suites/workflow-empty-read.mjs";
+import "../suites/workflow-snippet-compat.mjs";
 import "../suites/rpc-command-roundtrip.mjs";
 import "../suites/rpc-streaming.mjs";
 import "../suites/rpc-approval.mjs";

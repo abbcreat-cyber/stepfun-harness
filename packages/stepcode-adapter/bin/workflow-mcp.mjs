@@ -32,7 +32,7 @@ const tools = [
   ],
   ["GetWorkflowRun", "读取当前会话工作流的真实状态、节点与结果。", { runId: string }, ["runId"]],
   ["ListWorkflowRuns", "列出当前会话的工作流与状态。", {}, []],
-  ["EvalWorkflowSnippet", "用原版沙箱同步验证 TypeScript 片段，不创建持久运行；world.run 命令先确认。", { code: string, path: string, timeoutMs: { type: "integer", minimum: 1, maximum: 600000 } }, []],
+  ["EvalWorkflowSnippet", "用原版沙箱同步验证 TypeScript 片段，不创建持久运行。code/path 二选一；title 为可选描述，不影响执行；world.run 遵循会话授权。", { code: string, path: string, title: { type: "string", maxLength: 160, description: "可选的片段说明，仅用于展示与授权详情。" }, timeoutMs: { type: "integer", minimum: 1, maximum: 600000 } }, []],
   ["AmendWorkflow", "修订工作流，保留原引擎缓存与会话前缀；编译失败不会停止前驱。仅改并发可原地调整。", { run_id: string, script: string, path: string, name: string, max_concurrency: { type: ["integer", "null"], minimum: 1, maximum: 8 }, subagent_model: { type: ["string", "null"] } }, ["run_id"]],
   ["ResolveWorkflowQuestion", "回答正在执行的工作流子代理提出的阻塞问题，question_id 见通知或 GetWorkflowRun。", { question_id: string, answer: string }, ["question_id", "answer"]],
   ["CancelWorkflowRun", "停止当前会话的一次工作流运行。", { runId: string }, ["runId"]],

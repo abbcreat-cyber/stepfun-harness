@@ -1,4 +1,5 @@
 import { workflowToolName } from "./workflow/catalog.mjs";
+import { snippetDisplay } from "./workflow/snippet-result.mjs";
 import { visibleAssistantText } from "./assistant-text.mjs";
 import { normalizeClarification } from "./desktop-questionnaire.mjs";
 import { openingDeferral } from "./assistant-opening-hook.mjs";
@@ -130,6 +131,8 @@ export class StepStreamProjection {
         delete row.interactionId;
         row.output = { text: resultText(event.result) };
         row.status = event.isError ? "error" : "success";
+        const display = snippetDisplay(row.toolName, row.output.text);
+        if (display) row.display = display;
         const deferred = event.isError ? openingDeferral(event.result) : null;
         if (deferred) { row.status = "cancelled"; row.output = { text: deferred }; }
         if (deferred?.includes("本轮已停止") && this.outcome !== "failed") {

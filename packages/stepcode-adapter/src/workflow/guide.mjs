@@ -32,7 +32,8 @@ export async function readWorkflowGuide(section = "skill") {
           ? chapter(content, 7)
           : content,
     version: "step-zcode-original-1",
+    // 不改原技能正文；社区元数据与运行状态以当前工具 schema / 真实返回值为准。
     integration:
-      "以上编排规则来自原 ZCode 完整技能，仍用同一个编译器、引擎、调度器、journal 和 UI。子任务由 Step RPC 执行，默认沿用父会话模型，也可通过 subagent_model 指定 provider/model$reasoningLevel；具体脚本须经原确认图批准，用户可在运行卡配置模型与并发上限。EvalWorkflowSnippet 使用原版片段沙箱，AmendWorkflow 复用原版缓存，ResolveWorkflowQuestion 回答当前运行的子代理问题。工具参数以当前提供的定义为准。不要把名册竖排或提高 max_concurrency 当作脚本并行；按原技能 §7 在 join 前发出独立 ask。",
+      "以上编排规则来自原 ZCode 完整技能，仍用同一个编译器、引擎、调度器、journal 和 UI。子任务由 Step RPC 执行，默认沿用父会话模型，也可通过 subagent_model 指定 provider/model$reasoningLevel；具体脚本须经原确认图批准，用户可在运行卡配置模型与并发上限。EvalWorkflowSnippet 使用原版片段沙箱，AmendWorkflow 复用原版缓存，ResolveWorkflowQuestion 回答当前运行的子代理问题。工具参数以当前提供的定义为准。EvalWorkflowSnippet 接受 code/path 二选一及 timeoutMs，可选 title 仅是描述；ok:true 且 kind:completed 表示片段已成功，不要重复执行。片段返回的 git 非仓库等环境信息不等同于工具失败。不要把名册竖排或提高 max_concurrency 当作脚本并行；按原技能 §7 在 join 前发出独立 ask。",
   };
 }

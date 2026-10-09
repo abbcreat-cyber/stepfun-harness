@@ -14,7 +14,7 @@ import { startEmbeddedBrowserRelay } from "../src/embedded-browser-relay.mjs";
 
 async function fixture(t, mode, timeoutMs = 3000) {
   const root = await mkdtemp("D:/Temp/snippet-lifecycle-");
-  const input = { code: 'return await world.run("node", ["-e", "console.log(123)"]);', timeoutMs };
+  const input = { code: 'return await world.run("node", ["-e", "console.log(123)"]);', title: "验证工作流片段", timeoutMs };
   const rows = [{ rowId: 1, kind: "toolCall", toolCallId: "call", toolName: "EvalWorkflowSnippet", status: "running", input }];
   const bridge = createWorkflowBridge({ root, command: [], session: () => ({ mode, workspace: { workspacePath: root }, modelSelection: { providerId: "fixture", modelId: "fixture" } }), rows: () => rows, changed() {}, completed() {} });
   t.after(async () => { await bridge.close(); await rm(root, { recursive: true, force: true, maxRetries: 5 }); });
