@@ -65,7 +65,7 @@ See session timing, response speed, token consumption, and cache usage to unders
 2. Run the installer and choose a destination. It creates the **阶跃星辰** desktop shortcut with the project's star icon.
 3. Open the shortcut and connect your own subscription, API key, or custom model.
 
-**No separate Node.js, Python, Git Bash, or Step CLI setup is required.** The installer includes the real Step runtime, adapter, document libraries, LibreOffice, both built-in hooks, and plugins. Bring your own model account and credits.
+**No separate Node.js, Python, Git Bash, or Step CLI setup is required.** The installer includes the real Step runtime, adapter, document libraries, a lightweight Office engine, both built-in hooks, and plugins. Bring your own model account and credits.
 
 For source development:
 

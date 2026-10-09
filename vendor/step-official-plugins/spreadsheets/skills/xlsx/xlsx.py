@@ -226,6 +226,23 @@ def _libreoffice_recalc(filename: str, timeout: int = 30) -> Dict[str, Any]:
 
     abs_path = str(Path(filename).absolute())
 
+    # Harness 的轻量引擎直接重算并原子保存，不创建用户级 Basic 宏。
+    office_cli = os.environ.get("HARNESS_OFFICE_CLI")
+    if office_cli:
+        wrapper = Path(office_cli).parent / "bin" / "soffice.exe"
+        if not wrapper.is_file():
+            return {"error": "Bundled Office executable is missing; repair the Harness installation."}
+        try:
+            result = subprocess.run(
+                [str(wrapper), "recalculate", abs_path, "--timeout-ms", str(timeout * 1000)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout + 15,
+            )
+        except subprocess.TimeoutExpired:
+            return {"error": "Office recalculation timed out; the original spreadsheet was preserved."}
+        if result.returncode != 0:
+            return {"error": result.stderr.strip() or "Office recalculation failed"}
+        return _scan_recalculated_workbook(filename)
+
     if not _setup_libreoffice_macro():
         return {"error": "Failed to setup LibreOffice macro"}
 
@@ -280,6 +297,10 @@ def _libreoffice_recalc(filename: str, timeout: int = 30) -> Dict[str, Any]:
         else:
             return {"error": error_msg}
 
+    return _scan_recalculated_workbook(filename)
+
+
+def _scan_recalculated_workbook(filename: str) -> Dict[str, Any]:
     # Scan recalculated file for Excel errors
     try:
         wb = load_workbook(filename, data_only=True)

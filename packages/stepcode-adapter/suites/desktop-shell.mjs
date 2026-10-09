@@ -32,6 +32,15 @@ test("显式 shell 必须有效，不能静默改用 WSL", () => {
   assert.throws(() => desktopShellEnvironment({ STEPCODE_GIT_BASH: "D:\\missing\\bash.exe" }, "win32", () => false), /Git Bash/);
 });
 
+test("bundled document Python uses UTF-8 without changing the parent environment", () => {
+  const bash="D:\\Git\\bin\\bash.exe";
+  const parent={PATH:"C:\\Windows\\System32",STEPCODE_GIT_BASH:bash,STEPCODE_DOCUMENT_RUNTIME_DIR:"D:\\tools"};
+  const result=desktopShellEnvironment(parent,"win32",p=>p===bash);
+  assert.equal(result.env.PYTHONUTF8,"1");
+  assert.equal(result.env.PYTHONIOENCODING,"utf-8");
+  assert.equal(parent.PYTHONUTF8,undefined);
+});
+
 test("最小 PATH 同时补齐 Git Bash 与底座的 where.exe 依赖", () => {
   const bash = "D:\\Git\\bin\\bash.exe";
   const files = new Set([bash, "C:\\Windows\\System32\\where.exe"]);

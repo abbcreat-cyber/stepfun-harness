@@ -8,6 +8,14 @@ function within(directory, file) {
   return path !== ".." && !path.startsWith("..\\") && !path.startsWith("../") && !isAbsolute(path);
 }
 
+/** 点选能力不等于附上文件；只有没有具体目标的短请求才需要先澄清。 */
+export function isBarePluginRequest(prompt, images = []) {
+  if (typeof prompt !== "string" || images?.length || !prompt.includes("plugin://")) return false;
+  const rest = prompt.replace(/\[[^\]]*\]\(plugin:\/\/[^)]+\)/g, "")
+    .replace(/plugin:\/\/[^\s)"<>]+/g, "").trim();
+  return /^(?:(?:请|帮我|给我|先)\s*)?(?:打开|开启|启用|使用|试试|试一下|open|use|enable)(?:\s*(?:它|这个|一下|it|this))?[。.!！\s]*$/i.test(rest) || rest === "";
+}
+
 /** 只解析本轮明确引用，声明和已加载技能仍由原插件目录/SDK 各自拥有。 */
 export async function desktopPluginReferenceContext(prompt, skills, storageRoot, { activateSkills = false } = {}) {
   if (typeof prompt !== "string" || !storageRoot) return "";

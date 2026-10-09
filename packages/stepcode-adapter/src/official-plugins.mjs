@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, readdir, writeFile, access, rename } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { retireMissingBundledPlugins } from "./builtin-plugin-availability.mjs";
 export {pluginConfigSignature,readPluginConfigSnapshot,resolveStartedPluginSignature} from './plugin-config-signature.mjs';
 import {
   withStepPluginState,
@@ -109,6 +110,7 @@ export function ensureOfficialStepPlugins(root, source = officialPluginSource())
   return seeds.get(key);
 }
 async function materialize(root, source) {
+  await retireMissingBundledPlugins(root);
   const catalog = await readOfficialCatalog(source);
   for (const entry of catalog) {
     const active = join(root, "plugins", entry.name),
@@ -178,7 +180,7 @@ async function materialize(root, source) {
               name,
             ],
             env: { STEPCODE_STORAGE_ROOT_DIR: root },
-            timeoutMs: servers[name].timeoutMs ?? 600000,
+            timeoutMs: servers[name].timeoutMs ?? (entry.name === "android-emulator" ? 1200000 : 600000),
           },
         ]),
       ),

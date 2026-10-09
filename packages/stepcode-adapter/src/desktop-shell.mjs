@@ -57,7 +57,7 @@ export function desktopShellEnvironment(
   const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   const dirs = (env[pathKey] ?? "").split(";").map((dir) => dir.trim().replace(/^"|"$/g, ""));
   const toolRoot=windowsValue(env,"STEPCODE_DOCUMENT_RUNTIME_DIR");
-  const documentDirs=toolRoot?[win32.join(toolRoot,"document-python","Scripts"),win32.join(toolRoot,"LibreOffice25.8.4.2","SourceDir","LibreOffice","program")].filter(dir=>exists(win32.join(dir,"python.exe"))||exists(win32.join(dir,"soffice.exe"))):[];
+  const documentDirs=toolRoot?[win32.join(toolRoot,"document-python","Scripts"),win32.join(toolRoot,"office","bin"),win32.join(toolRoot,"LibreOffice25.8.4.2","SourceDir","LibreOffice","program")].filter(dir=>exists(win32.join(dir,"python.exe"))||exists(win32.join(dir,"soffice.exe"))):[];
   const explicit = windowsValue(env, "STEPCODE_GIT_BASH")?.trim();
   if (explicit && (!win32.isAbsolute(explicit) || !exists(explicit))) {
     throw new Error("配置的 Git Bash 路径不存在或不是绝对路径，请检查 STEPCODE_GIT_BASH");
@@ -85,7 +85,11 @@ export function desktopShellEnvironment(
       ...nativeLookup,
     ].join(";");
     next.STEPCODE_GIT_BASH = bash;
-    if(toolRoot){const modules=win32.join(toolRoot,"document-node","node_modules");if(exists(modules))next.NODE_PATH=[modules,windowsValue(next,"NODE_PATH")].filter(Boolean).join(";");}
+    if(toolRoot){const modules=win32.join(toolRoot,"document-node","node_modules");if(exists(modules))next.NODE_PATH=[modules,windowsValue(next,"NODE_PATH")].filter(Boolean).join(";");const office=win32.join(toolRoot,"office","office.mjs");if(exists(office))next.HARNESS_OFFICE_CLI=office;
+      // 中文 Windows 管道默认 GBK；文档质检的 Unicode 标记会导致 Python 输出即崩溃。
+      next.PYTHONUTF8 = windowsValue(next,"PYTHONUTF8") ?? "1";
+      next.PYTHONIOENCODING = windowsValue(next,"PYTHONIOENCODING") ?? "utf-8";
+    }
     return { env: next, bash };
   }
   return { env, bash: null };

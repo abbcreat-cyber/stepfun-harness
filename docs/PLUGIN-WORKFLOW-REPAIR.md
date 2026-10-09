@@ -1,0 +1,15 @@
+# Desktop plugin and workflow execution contract
+
+Android tool resolution on Windows normalizes each line of `where.exe` output and chooses an executable launcher (.exe/.cmd/.bat), never the extensionless Unix Gradle script. Test using two same-name PATH entries and the real Android MCP build operation. Emulator/device testing uses an isolated AVD and preserves existing device data.
+
+The generated Compose project pins Java and Kotlin bytecode targets consistently at 17. Android foreground command deadlines terminate the Windows process tree so grandchildren cannot hold stdout open. The MCP bridge recognizes camelCase `timeoutMs` and reserves wrapper-generation, device-start and shutdown time instead of expiring before the underlying operation.
+
+Bundled Python uses UTF-8 for piped document-tool output on Windows. Unicode status markers must not crash a successful quality check under the GBK host locale. Unavailable auto-preinstalled StepPage declarations are retired and omitted from the catalog when the executable is absent; the native preinstall marker prevents startup from re-enabling them. Custom MCP declarations are not touched.
+
+The desktop adapter owns plugin-reference resolution. A `plugin://` reference selects a capability, never a file attachment. Resolve installed/enabled state and loaded skills before the first model request, provide the selected skill through the SDK's hidden per-turn context message, and identify the real workspace from the SDK context. A bare plugin selection with only an open/use request and no attached target must clarify intent before filesystem discovery; direct skill reads remain allowed. Concrete file tasks keep their normal tools.
+
+The workflow service owns run lifecycle, questions and amendments. Expose the original snippet sandbox and imported-cache builder through the existing bootstrap public workflow API. Snippets have no persistent run; commands require approval. Amendments compile before stopping a predecessor, preserve journal lineage and reuse completed work with truthful transcript boundaries. Failed validation or refused approval cannot stop the old run. Superseded runs do not emit completion tasks. Questions belong to one active run: reply once, reject unknown/settled questions, cancel waits when the run stops. Native permission confirmations always go to the user's existing permission UI.
+
+Malformed model tool argument JSON must never execute. The first malformed batch is blocked through native tool errors so the model may correct it once; a second malformed response ends the turn. Sibling calls are blocked together to avoid duplicated side effects. Oversized input and cancelled/error streams remain terminal. Never guess missing arguments or execute XML printed in assistant text.
+
+Acceptance uses the real bundled Step executable against localhost fixtures for malformed responses, cancellation and edge cases. Live small-task checks may use the user's explicitly authorized Step Plan subscription only, with bounded time/task counts and isolated output directories; never select other API accounts for these checks.

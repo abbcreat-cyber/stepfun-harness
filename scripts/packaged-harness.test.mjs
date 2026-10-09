@@ -8,7 +8,7 @@ async function fixture(t) {
   const dir = await mkdtemp(join(process.cwd(), ".release-check-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const resources = join(dir, "Moved App/resources"), home = join(dir, "New User"), runtime = join(resources, "harness-runtime");
-  for (const path of ["step/step.exe", "node/node.exe", "adapter/bin/zcode-bridge.mjs", "git/bin/bash.exe", "tools/document-python/Scripts/python.exe", "../step-official-plugins/catalog.json"]) {
+  for (const path of ["step/step.exe", "node/node.exe", "adapter/bin/zcode-bridge.mjs", "git/bin/bash.exe", "tools/document-python/Scripts/python.exe", "tools/office/office.mjs", "tools/office/bin/soffice.exe", "../step-official-plugins/catalog.json"]) {
     await mkdir(join(runtime, path, ".."), { recursive: true }); await writeFile(join(runtime, path), "fixture");
   }
   await writeFile(join(runtime, "manifest.json"), JSON.stringify({ schema: 1, stepVersion: "0.1.2" }));

@@ -76,6 +76,8 @@ packages/desktop/build/step-official-plugins/
 .harness-tools/
 .release-check/
 packages/desktop/build/harness-runtime/
+packages/desktop/build/harness-runtime-*/
+tools/office/bin/
 packages/desktop/src/scheduler/schedulerProtocol.js
 packages/desktop/src/scheduler/schedulerProtocol.js.map
 packages/desktop/src/scheduler/schedulerProtocol.d.ts

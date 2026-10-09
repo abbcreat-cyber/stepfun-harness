@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { isMissingBundledPlugin } from "./builtin-plugin-availability.mjs";
 import {
   withStepPluginState,
   writeStepPluginState,
@@ -74,6 +75,7 @@ export function createStepPluginHandlers(
           const declaration = await readStepPluginDeclaration(path);
           if (!declaration) continue;
           const { manifest } = declaration;
+          if (isMissingBundledPlugin(manifest)) continue;
           if (manifest.stepOfficial && isUnavailableOfficialPlugin(manifest.id)) continue;
           const marketplace = manifest.stepOfficial ? OFFICIAL_MARKETPLACE : "stepcode";
           const id = `${safeName(manifest.id)}@${marketplace}`;

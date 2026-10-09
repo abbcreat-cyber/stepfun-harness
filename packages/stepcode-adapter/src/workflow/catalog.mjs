@@ -15,6 +15,9 @@ const names = new Set([
   "ResumeWorkflowRun",
   "SaveWorkflow",
   "ListSavedWorkflows",
+  "EvalWorkflowSnippet",
+  "AmendWorkflow",
+  "ResolveWorkflowQuestion",
 ]);
 const actorReadMethods = new Set([
   "session/read", "session/subscribe", "v4/conversation/subscribe", "v4/conversation/unsubscribe",
@@ -39,7 +42,7 @@ export function expandWorkflowCommand(text) {
 export function delegatesWorkflowApproval(request) {
   return (
     request.method === "confirm" &&
-    /^Approve step_workflows__step_workflows__(CreateWorkflow|ResumeWorkflowRun) \[[^\]]+\]$/.test(
+    /^Approve step_workflows__step_workflows__(CreateWorkflow|ResumeWorkflowRun|EvalWorkflowSnippet|AmendWorkflow) \[[^\]]+\]$/.test(
       request.title ?? "",
     )
   );

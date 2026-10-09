@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, realpath, writeFile, access } from "node:fs/promises";
 import { basename, dirname, join, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { includeRuntimePath } from "./runtime-copy-policy.mjs";
 
 async function exists(path) { try { await access(path); return true; } catch { return false; } }
 async function findDependency(from, name) {
@@ -18,7 +19,7 @@ export async function deployAdapter(source, destination) {
     src = await realpath(src);
     await mkdir(dirname(dest), { recursive: true });
     await cp(src, dest, { recursive: true, dereference: true,
-      filter: path => !["node_modules", ".git", ".cache"].includes(basename(path)) || path === src });
+      filter: path => path === src || (basename(path) !== "node_modules" && includeRuntimePath(src, path)) });
     installed.set(resolve(dest).toLowerCase(), src);
     queue.push({ src, dest });
   }

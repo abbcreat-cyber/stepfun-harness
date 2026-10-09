@@ -7,6 +7,11 @@ description: "Use this skill any time a spreadsheet file is the primary input or
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
+## StepFun Harness bundled Office runtime
+
+In the Windows desktop app, document tools are bundled. Probe `soffice --version` before installing anything. The provided `soffice` / `libreoffice` commands support ordinary headless conversions through a compact native LibreOffice engine. `HARNESS_OFFICE_CLI` points to its Node CLI, which also provides `recalculate INPUT [OUTPUT]` and `render INPUT NEW_DIRECTORY`. The spreadsheet helper automatically uses it for formula recalculation. Keep using the document quality checks below. If a bundled command fails, report its actual error; do not replace or reinstall the runtime silently.
+
+
 # XLSX — Scene-Driven Spreadsheet Workbench
 
 ## Environment Setup

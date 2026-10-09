@@ -56,6 +56,11 @@ test("MCP guide preserves Markdown lines so Step can read language rules and con
       assert.equal(frame.id, id);
       return frame.result;
     };
+    const registered = (await call("tools/list")).tools.map(tool => tool.name);
+    for (const name of ["EvalWorkflowSnippet", "AmendWorkflow", "ResolveWorkflowQuestion"]) {
+      assert.ok(registered.includes(name), `${name} must be callable through MCP`);
+      assert.equal((await call("tools/call", { name, arguments: {} })).isError, false);
+    }
     const result = await call("tools/call", {
       name: "ReadWorkflowGuide",
       arguments: { section: "skill" },

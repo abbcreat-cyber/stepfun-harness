@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline";
+import { officialPluginCallTimeout } from "../src/official-plugin-timeout.mjs";
 import { readFile, mkdir, access } from "node:fs/promises";
 import { join, resolve, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -257,7 +258,7 @@ async function call(frame, signal) {
         clientMode: context.clientMode,
         turnId: context.turnId,
       },
-      { timeoutMs: frame.params.arguments?.timeout_ms ?? 120000, signal },
+      { timeoutMs: officialPluginCallTimeout(runtime.plugin, frame.params.name, frame.params.arguments), signal },
     );
   }
   throw new Error("不支持的 MCP 请求");

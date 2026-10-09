@@ -1,0 +1,11 @@
+{
+  "name": "stepfun-harness-office",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@deepseek-ai/libreoffice-kit": "0.1.2",
+    "@deepseek-ai/libreoffice-kit-win32-x64": "0.1.2"
+  }
+}

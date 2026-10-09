@@ -11,6 +11,8 @@ export const { createNodeFileSystemAdapter } = await import("@zcode/adapters/fs"
 export const { createNodeExecutionAdapter } = await import("@zcode/adapters/exec");
 export const { NodeToolArtifactStore } = await import("@zcode/adapters/storage");
 export const {
+  createDynamicWorkflowSnippetService,
+  buildImportedCache,
   executeWorldRead,
   executeArtifactPublish,
   artifactsOf,

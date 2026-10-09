@@ -15,10 +15,15 @@ function boundedObjectJson(value) {
 }
 
 /** 原生公开增量提供 raw JSON；只做终态完整性校验，不解释 SSE 或执行工具。 */
-export function registerProviderToolIntegrity(pi, isManaged) {
+export function registerProviderToolIntegrity(pi, isManaged, { maxRepairs = 1 } = {}) {
   let calls = new Map();
+  let repairs = 0, blocked = new Set();
+  pi.on("before_agent_start", () => { repairs = 0; blocked = new Set(); });
+  pi.on("tool_call", event => {
+    if (blocked.has(event.toolCallId)) return { block: true, reason: "工具未执行：这一批调用包含不完整或无效的 JSON 参数。请重新生成整批正确的结构化工具调用，提供所有必填参数；不要输出 XML/tool_call 标签，也不要声称已执行。只允许纠正一次。" };
+  });
   pi.on("message_start", (event) => {
-    if (event.message?.role === "assistant") calls = new Map();
+    if (event.message?.role === "assistant") { calls = new Map(); blocked = new Set(); }
   });
   pi.on("message_update", (event, ctx) => {
     if (!isManaged(ctx.model)) return;
@@ -71,13 +76,21 @@ export function registerProviderToolIntegrity(pi, isManaged) {
       });
       return { message: { ...message, content } };
     } catch {
+      const toolCalls = message.content.filter(block => block.type === "toolCall");
+      // 首次格式失败回传原生工具错误让模型纠正，绝不执行猜补后的参数。
+      // 整批拦截可避免正确的兄弟调用在模型重试时被重复执行。
+      if (repairs < maxRepairs && toolCalls.length && ![...calls.values()].some(entry => entry.invalid)) {
+        repairs++;
+        blocked = new Set(toolCalls.map(block => block.id));
+        return { message: { ...message, stopReason: "toolUse", content: message.content.map(block => block.type === "toolCall" ? { ...block, arguments: {} } : block) } };
+      }
       return {
         message: {
           ...message,
           content: message.content.filter((block) => block.type !== "toolCall"),
           stopReason: "error",
           errorMessage:
-            "Provider returned incomplete or invalid tool argument JSON; no tool was executed",
+            "模型连续返回不完整或无效的工具参数，已停止本轮；这批工具未执行。请重试或切换模型。",
         },
       };
     } finally {

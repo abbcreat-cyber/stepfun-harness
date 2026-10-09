@@ -75,6 +75,7 @@ export class WorkflowReadModel {
       run: this.assertRun(runId),
       actors: this.journal.listActors(runId),
       nodes: this.journal.listNodes(runId),
+      pendingQuestions: this.questions?.list(runId) ?? [],
     };
   }
   events(runId, afterSequence, limit = 100) {

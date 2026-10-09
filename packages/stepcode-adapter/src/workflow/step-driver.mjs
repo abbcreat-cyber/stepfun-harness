@@ -9,6 +9,7 @@ import { prepareProviderRequestOptions, discardProviderRequestOptions } from "..
 import { readModelConfigSignatures, modelEnvironmentSignature } from "../model-config-signatures.mjs";
 import { mergeDesktopEnvironment } from "../desktop-shell.mjs";
 import { resolveThoughtLevel } from "../thought-level-selection.mjs";
+import { captureNativeTranscript, seedNativeTranscript } from "./native-transcript.mjs";
 
 const refKey = (ref) => `${ref.siteId}@${ref.ordinal}`;
 
@@ -44,6 +45,8 @@ export function createStepWorkflowDriver(options, sink) {
         // 原 UI 只认 node-executing；仅回报 dispatched/progress 会让在工作的 actor 始终算等待。
         observeActivity(event);
         if (event.type !== "tool_execution_start") return;
+        // 真实工具写入前关闭前驱世界缓存；未知工具按可能写入处理。
+        if (!/^(read_file|read|find_files|search_files|list_directory|find_tools|clarify_user)$/.test(event.toolName ?? "")) sink.askMutating(ask.instance);
         tools++;
         sink.askProgress(ask.instance, {
           turn: ask.turn,
@@ -90,6 +93,7 @@ export function createStepWorkflowDriver(options, sink) {
         JSON.stringify({ sessionFile: state.sessionFile, model: options.model }),
       );
       await actor.transcript.flush();
+      const messageBoundary = await captureNativeTranscript(actor.client, options.actorRoot, ask.session.id);
       const tokens = events
         .filter((event) => event.type === "message_end")
         .reduce((sum, event) => sum + (event.message?.usage?.totalTokens ?? 0), 0);
@@ -106,6 +110,8 @@ export function createStepWorkflowDriver(options, sink) {
           sink.askTurnEnded(ask.instance, finalText);
         }
       } else sink.askTurnEnded(ask.instance, finalText);
+      const completed = options.journal.getNode(options.runId, ask.instance.siteId, ask.instance.ordinal);
+      if (completed?.status === "completed") options.journal.putNode({ ...completed, messageBoundary });
     } catch (error) {
       await actor.transcript
         ?.finish(ask.cancelled || disposed ? "completedInterrupted" : "failed")
@@ -121,8 +127,6 @@ export function createStepWorkflowDriver(options, sink) {
     journal: options.journal,
     emit: options.emit,
     async createActorSession(ref, persona, seed) {
-      if (seed)
-        throw new engine.WorkflowError("DriverError", "当前 Step 适配器不支持修订时截断复制子会话");
       const id = `${options.runId}-${refKey(ref)}`;
       const file = join(options.actorRoot, `${encodeURIComponent(id)}.json`);
       await mkdir(options.actorRoot, { recursive: true });
@@ -133,7 +137,7 @@ export function createStepWorkflowDriver(options, sink) {
         cwd: options.cwd,
         env: options.getClientEnvironment ? await options.getClientEnvironment() : options.env,
         onUiRequest: options.onUiRequest
-          ? (request) => options.onUiRequest(request, options.signal)
+          ? (request) => options.onUiRequest(request, options.signal, id)
           : undefined,
       });
       const startupEnv = mergeDesktopEnvironment(process.env, client.options.env), startupSignatures = await readModelConfigSignatures(undefined, startupEnv);
@@ -154,7 +158,10 @@ export function createStepWorkflowDriver(options, sink) {
             sessionPath: saved.sessionFile,
           });
           if (!result.success || result.data?.cancelled) throw new Error("无法恢复工作流子会话");
-        } else await client.newSession();
+        } else {
+          await client.newSession();
+          if (seed) await seedNativeTranscript(client, options.actorRoot, seed, id, options.cwd);
+        }
         options.signal?.throwIfAborted();
         await client.setModel(options.model.providerId, options.model.modelId);
         await options.prepareModelExecution?.(options.model);

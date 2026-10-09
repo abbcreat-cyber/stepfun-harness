@@ -573,7 +573,7 @@ export default {
     }
   },
   extraResources: [
-    ...(communityBuild ? [{ from: "build/harness-runtime", to: "harness-runtime" }] : []),
+    ...(communityBuild ? [{ from: process.env.HARNESS_RUNTIME_STAGE || "build/harness-runtime", to: "harness-runtime" }] : []),
     ...(communityBuild ? [{ from: "build/step-official-plugins", to: "step-official-plugins" }] : []),
     { from: resolve(workspaceRoot, noticesFileName), to: noticesFileName },
     ...(targetPlatform.os === "darwin"

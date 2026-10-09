@@ -67,7 +67,7 @@ for (const protocol of protocols)
       kind: "tool",
       ...tool,
       rawArguments,
-      text: "WIRE_MALFORMED_TOOL_EXECUTED",
+      text: "WIRE_MALFORMED_TOOL_BLOCKED",
       newline: "\n",
     });
     const count = http.requests.length;
@@ -90,7 +90,7 @@ for (const protocol of protocols)
     assert.equal(http.errors.length, 0, JSON.stringify(http.errors));
     assert.equal(
       starts.length,
-      0,
+      1,
       `Incomplete tool JSON executed native ${tool.name}; markerOutput=${markerOutput}, HTTP toolResults=${sentToolResults.length}`,
     );
     assert.equal(
@@ -100,14 +100,31 @@ for (const protocol of protocols)
     );
     assert.equal(
       sentToolResults.length,
-      0,
-      "incomplete JSON must not reach tool-result continuation HTTP",
+      1,
+      "native blocked tool result must give the model a correction opportunity",
     );
     assert.equal(
       assistant(events)?.stopReason,
-      "error",
-      "incomplete final arguments must settle as an error",
+      "stop",
+      "model may finish after receiving the blocked tool result",
     );
+    assert.ok(ends.every(event => event.isError === true));
+    assert.match(JSON.stringify(ends), /工具未执行|invalid.*argument|validation/i);
+
+    for (const invalidAttempts of [1, 2]) {
+      http.set({ kind: "tool-repair", ...tool, rawArguments, invalidAttempts, text: "WIRE_REPAIRED" });
+      const retried = await client.promptAndWait("Check a small local file", { timeoutMs: 20000 });
+      const completed = retried.filter(event => event.type === "tool_execution_end");
+      if (invalidAttempts === 1) {
+        assert.equal(completed.filter(event => !event.isError).length, 1);
+        assert.ok(completed.some(event => !event.isError && JSON.stringify(event).includes(markerText)));
+        assert.equal(assistant(retried)?.stopReason, "stop");
+      } else {
+        assert.ok(completed.every(event => event.isError));
+        assert.equal(assistant(retried)?.stopReason, "error");
+        assert.match(assistant(retried)?.errorMessage, /工具未执行/);
+      }
+    }
   });
 
 test(

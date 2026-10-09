@@ -214,8 +214,8 @@ export function createWorkflowBridge(options) {
                   payload: {
                     kind: "permission",
                     toolCallId: request.toolCallId,
-                    toolName: "CreateWorkflow",
-                    summary: "确认运行工作流",
+                    toolName: request.toolName ?? "CreateWorkflow",
+                    summary: request.toolName === "EvalWorkflowSnippet" ? "确认执行工作流片段中的命令" : "确认运行工作流",
                     detail: request.input,
                     display: request.display,
                     freeText: true,
@@ -238,6 +238,7 @@ export function createWorkflowBridge(options) {
             options.changed(sessionId);
           },
           onCompleted: (result, origin) => options.completed(sessionId, result, origin),
+          onQuestion: (question, origin) => options.completed(sessionId, { ...question, status: "waiting_question", message: "子代理等待回答，请使用 ResolveWorkflowQuestion；没有把握时先询问用户。" }, origin),
         });
       })();
       services.set(sessionId, promise);
@@ -250,6 +251,9 @@ export function createWorkflowBridge(options) {
     permission,
     cancelPending(sessionId) {
       admission.cancel(sessionId);
+      void services.get(sessionId)?.then(instance => {
+        for (const controller of instance.snippets) controller.abort("user");
+      }).catch(() => {});
       for (const [id, request] of pending) {
         if (request.sessionId !== sessionId) continue;
         pending.delete(id);
@@ -264,7 +268,7 @@ export function createWorkflowBridge(options) {
       }
       const instance = await service(context.sessionId);
       if(guideSessions.has(context.sessionId))instance.guideRead=true;
-      const toolCallId = ["CreateWorkflow", "ResumeWorkflowRun"].includes(method)
+      const toolCallId = ["CreateWorkflow", "ResumeWorkflowRun", "AmendWorkflow", "EvalWorkflowSnippet"].includes(method)
         ? await admission.claim(context.sessionId, method, params) : undefined;
       // 来源由 PID relay 的真实输入上下文注入；不得在完成时读另一个正在运行的输入。
       const origin = { automationId: context.activeAutomationId, toolDisallowlist: context.toolDisallowlist,
@@ -274,6 +278,12 @@ export function createWorkflowBridge(options) {
           return instance.guide(params.section);
         case "CreateWorkflow":
           return instance.create(params, toolCallId, origin);
+        case "EvalWorkflowSnippet":
+          return instance.evalSnippet(params, toolCallId);
+        case "AmendWorkflow":
+          return instance.amend(params, toolCallId, origin);
+        case "ResolveWorkflowQuestion":
+          return instance.resolveQuestion(params);
         case "GetWorkflowRun":
           return instance.detail(params.runId);
         case "ListWorkflowRuns":

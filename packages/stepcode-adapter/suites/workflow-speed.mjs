@@ -23,7 +23,8 @@ test("original workflow guide stays lazy and needs no service initialization", a
     );
     assert.match(guide.content, /# Writing dynamic workflows/);
     assert.match(guide.content, /Parallelism comes from/);
-    assert.match(guide.integration, /未注册的/);
+    assert.match(guide.integration, /EvalWorkflowSnippet.*AmendWorkflow.*ResolveWorkflowQuestion/);
+    assert.doesNotMatch(guide.integration, /尚不能调用|未注册的/);
     await assert.rejects(access(join(root, "workflows")));
     await bridge.hydrate("s");
     await assert.rejects(access(join(root, "workflows")));

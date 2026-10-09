@@ -81,9 +81,9 @@ export function textEvents(protocol, text) {
   ];
 }
 
-function toolEvents(protocol, name, args, rawArguments, initialObject = false) {
+function toolEvents(protocol, name, args, rawArguments, initialObject = false, callId = "call_wire") {
   const argumentsJson = rawArguments ?? JSON.stringify(args),
-    id = "call_wire";
+    id = callId;
   if (protocol === protocols[0])
     return [
       chat({ role: "assistant", content: "我先执行本地测试所需的操作，再核对结果。" }),
@@ -179,6 +179,7 @@ export async function httpFixture(protocol) {
     errors = [],
     closed = [];
   let action = { kind: "text", text: "WIRE_TEXT_测🙂", newline: "\r\n" };
+  let repairStep = 0;
   const server = createServer(async (req, res) => {
     try {
       const chunks = [];
@@ -190,6 +191,13 @@ export async function httpFixture(protocol) {
         body: JSON.parse(Buffer.concat(chunks).toString()),
       };
       requests.push(captured);
+      if (action.kind === "tool-repair" && repairStep < 2) {
+        const attempt = ++repairStep;
+        await sse(res, protocol, toolEvents(protocol, action.name, action.args,
+          attempt <= (action.invalidAttempts ?? 1) ? action.rawArguments : undefined,
+          false, `repair_${attempt}`));
+        return;
+      }
       res.once("close", () => closed.push(captured));
       if (
         action.strict &&
@@ -263,6 +271,7 @@ export async function httpFixture(protocol) {
     baseUrl: `http://127.0.0.1:${server.address().port}/v1`,
     set(next) {
       action = next;
+      repairStep = 0;
     },
     async close() {
       server.closeAllConnections();

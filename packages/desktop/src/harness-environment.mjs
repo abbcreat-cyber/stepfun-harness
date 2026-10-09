@@ -36,6 +36,7 @@ export async function packagedEnvironment(resources, home, base = process.env) {
     STEP_CODING_AGENT_DIR: join(data, "agent"), STEPCODE_CONVERSATION_DIR: join(data, "conversations"),
     STEPCODE_DEFAULT_PROJECT_DIR: join(data, "workspace"), STEPCODE_DESKTOP_CREDENTIALS: join(data, "state", "desktop-credentials.json"),
     STEPCODE_DOCUMENT_RUNTIME_DIR: join(root, "tools"), STEPCODE_GIT_BASH: join(root, "git", "bin", "bash.exe"),
+    HARNESS_OFFICE_CLI: join(root, "tools", "office", "office.mjs"),
     STEPCODE_TASKBAR_ICON: join(resources, "icon.ico"),
     ZCODE_DESKTOP_APPLICATION_NAME: "StepFun Harness", ZCODE_DESKTOP_USER_DATA_DIR: join(data, "electron"),
     ZCODE_DESKTOP_SESSION_DATA_DIR: join(data, "electron", "session"), ZCODE_DESKTOP_HOME_DIR: join(data, "home"),
@@ -48,9 +49,9 @@ export async function packagedEnvironment(resources, home, base = process.env) {
   if (pathKey) delete env[pathKey];
   env.PATH = [join(root, "node"), join(root, "git", "cmd"), join(root, "git", "bin"),
     join(root, "tools", "document-python", "Scripts"),
-    join(root, "tools", "LibreOffice25.8.4.2", "SourceDir", "LibreOffice", "program"), previousPath].filter(Boolean).join(delimiter);
+    join(root, "tools", "office", "bin"), previousPath].filter(Boolean).join(delimiter);
   for (const file of [step, env.STEPCODE_NODE, env.STEPCODE_BRIDGE_ENTRY, env.STEPCODE_GIT_BASH,
-    join(env.STEPCODE_OFFICIAL_PLUGIN_SOURCE, "catalog.json"), join(root, "tools", "document-python", "Scripts", "python.exe")]) await access(file);
+    join(env.STEPCODE_OFFICIAL_PLUGIN_SOURCE, "catalog.json"), env.HARNESS_OFFICE_CLI, join(root, "tools", "office", "bin", "soffice.exe"), join(root, "tools", "document-python", "Scripts", "python.exe")]) await access(file);
   for (const dir of ["settings", "state", "runtime", "agent", "logs", "conversations", "workspace", "electron/session", "home", "data"]) await mkdir(join(data, dir), { recursive: true });
   return env;
 }

@@ -13,6 +13,7 @@ function inspect({ initial = {}, raw, api = "anthropic-messages", stopReason = "
       },
     },
     () => true,
+    { maxRepairs: 0 },
   );
   const ctx = { model },
     message = { role: "assistant", stopReason, content: [tool] };
@@ -57,7 +58,7 @@ test("structured initial and raw delta obey the same exact JSON length boundary"
   ]) {
     assert.equal(result.stopReason, "error");
     assert.equal(result.content.length, 0);
-    assert.match(result.errorMessage, /no tool was executed/);
+    assert.match(result.errorMessage, /工具未执行/);
   }
 });
 

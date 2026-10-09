@@ -13,16 +13,22 @@ import {
   createNodeExecutionAdapter,
   NodeToolArtifactStore,
   savedWorkflows,
+  buildImportedCache,
 } from "./dependencies.mjs";
 import { createStepWorkflowDriver } from "./step-driver.mjs";
 import { readDesktopCredentialEnv } from "../credentials.mjs";
 import { hydrateActorTranscripts } from "./actor-transcript.mjs";
+import { evalSnippet, amend } from "./operations.mjs";
+import { WorkflowQuestions } from "./questions.mjs";
 
 export class StepWorkflowService extends WorkflowReadModel {
   constructor(options) {
     super();
     this.options = options;
     this.active = new Map();
+    this.snippets = new Set();
+    this.amending = new Set();
+    this.questions = new WorkflowQuestions(this);
     this.ownership = new WorkflowOwnership(join(options.root, "workflow-owners.sqlite"));
     this.store = createSqliteSessionStore({ dbPath: join(options.root, "workflow-runs.sqlite") });
     this.journal = this.store.workflowJournalStore();
@@ -40,6 +46,9 @@ export class StepWorkflowService extends WorkflowReadModel {
     this.guideRead = true;
     return guide;
   }
+  evalSnippet(input, toolCallId) { return evalSnippet.call(this, input, toolCallId); }
+  amend(input, toolCallId, origin) { return amend.call(this, input, toolCallId, origin); }
+  resolveQuestion(input) { return this.questions.resolve(input.question_id, input.answer); }
 
   async prepare(input) {
     const selectedModel = this.options.getModel?.() ?? this.options.model;
@@ -49,6 +58,8 @@ export class StepWorkflowService extends WorkflowReadModel {
     )
       throw new Error("当前工作流子任务沿用父会话模型，请移除 subagent_model 或使用当前模型");
     let script = input.script;
+    if (input.path !== undefined) input = { ...input, script_path: input.path };
+    if (script !== undefined && input.script_path !== undefined) throw new Error("script 和 path 不能同时提供");
     if (input.saved?.name) {
       const saved = this.getSaved({ name: input.saved.name, scope: input.saved.scope });
       if (!saved.ok) throw new Error(`无法加载工作流：${saved.reason}`);
@@ -183,6 +194,7 @@ export class StepWorkflowService extends WorkflowReadModel {
     };
     const fileSystemPort = createNodeFileSystemAdapter();
     const model = this.options.getModel?.() ?? this.options.model;
+    const running = { controller, promise: undefined, control: undefined, superseded: false };
     let driver;
     const executionPromise = runWorkflowScript({
       scriptText: prepared.script,
@@ -198,6 +210,9 @@ export class StepWorkflowService extends WorkflowReadModel {
       askSpecs: prepared.askSpecs,
       validate: engine.validate,
       signal: controller.signal,
+      control: { bind: control => { running.control = control; } },
+      importedCache: prepared.importedCache,
+      resumedFrom: prepared.resumedFrom,
       launch: {
         inputId: this.options.turnId?.() || runId,
         toolCallId,
@@ -219,7 +234,7 @@ export class StepWorkflowService extends WorkflowReadModel {
             getClientEnvironment: this.options.getClientEnvironment,
             model,
             signal: controller.signal,
-            onUiRequest: this.options.onUiRequest,
+            onUiRequest: (request, signal, actor) => this.questions.ask(runId, actor, request, signal, taskOrigin),
             actorRoot: join(this.options.root, "actors"),
             conversationRoot: this.options.conversationRoot,
             onActorChanged: this.options.onActorChanged,
@@ -240,12 +255,14 @@ export class StepWorkflowService extends WorkflowReadModel {
       await driver?.closed;
       release();
     });
-    this.active.set(runId, { controller, promise });
+    running.promise = promise;
+    this.active.set(runId, running);
     void promise.then(
       (result) => {
         this.active.delete(runId);
         this.refresh();
         this.options.onState?.(this.state);
+        if (running.superseded) return;
         this.options.onCompleted?.({
           runId,
           name: prepared.name,
@@ -258,6 +275,7 @@ export class StepWorkflowService extends WorkflowReadModel {
         this.active.delete(runId);
         this.refresh();
         this.options.onState?.(this.state);
+        if (running.superseded) return;
         this.options.onCompleted?.({
           runId,
           name: prepared.name,
@@ -289,12 +307,20 @@ export class StepWorkflowService extends WorkflowReadModel {
     const record = this.assertRun(runId);
     if (this.active.has(runId)) throw new Error("工作流仍在执行");
     if (record.status !== "stopped") throw new Error("只有停止或中断的工作流可以恢复");
+    if (record.stopReason === "superseded") throw new Error("此工作流已被修订替代，请恢复后继运行");
     const prepared = await this.prepare({
       script: record.scriptText,
       name: record.name,
       max_concurrency: record.caps.maxConcurrency,
     });
     if (!prepared.ok) return prepared;
+    prepared.args = record.args ?? {};
+    if (record.resumedFrom) {
+      const imported = await buildImportedCache({ journal: this.journal }, record.resumedFrom);
+      if (!imported.ok) return { ok: false, reason: imported.reason };
+      prepared.resumedFrom = record.resumedFrom;
+      prepared.importedCache = imported.cache;
+    }
     const answer = await this.options.confirm({
       toolCallId,
       input: { script: prepared.script, name: prepared.name },
@@ -330,6 +356,7 @@ export class StepWorkflowService extends WorkflowReadModel {
     };
   }
   async close() {
+    for (const controller of this.snippets) controller.abort("interrupted");
     for (const run of this.active.values()) run.controller.abort("interrupted");
     await Promise.allSettled([...this.active.values()].map((run) => run.promise));
     this.store.close();

@@ -11,13 +11,14 @@ Use Node 24 and pnpm 10.33.2, then run `pnpm install`. Run `pnpm --filter 'stepc
 
 Prepare clean, unconfigured distributions in a build directory:
 
-| Component | Pinned first-release input |
+| Component | Pinned runtime input |
 |---|---|
 | Step | 0.1.3, Windows x64, official [manifest](https://static-openapi.stepfun.com/stepcode/latest.json); ZIP SHA-256 `43f6d0f49b762b47ebdbdf182c15ee177f853f26af9e3936745592413d93411e` |
 | Node | 24.18.0 Windows x64, [distribution and checksums](https://nodejs.org/dist/v24.18.0/) |
 | Python | 3.12.10 Windows x64 embeddable ZIP, [python.org](https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip) |
 | Git Bash | PortableGit 2.56.0.2 x64, [official release](https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.2); SHA-256 `075e158ef8e1f0ab80b347e245405d3eca735c2dc88fd8e032e137d0ca61f61b` |
-| LibreOffice | 25.8.4.2 Windows x64, extracted installation including its license files |
+| Office engine | `tools/office/package-lock.json`: LibreOffice kit 0.1.2 and Windows x64 native package; run `npm ci --prefix tools/office --omit=dev --omit=optional --ignore-scripts` |
+| Microsoft C++ runtime | Official signed [x64 redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe); staging extracts app-local DLLs and license without installing system components |
 | Python packages | `tools/documents/requirements.lock.txt`; install into a clean target directory with pip or uv |
 | Node document packages | `tools/documents/package-lock.json`; copy these two JSON files to a clean folder and run `npm ci` there |
 
@@ -36,7 +37,8 @@ Create a local `runtime-input.json` (do not commit machine paths), substituting 
   "pythonEmbed": "D:/build/python-embed",
   "pythonPackages": "D:/build/python-packages",
   "documentNode": "D:/build/document-node",
-  "libreOffice": "D:/build/LibreOffice"
+  "vcRedistributable": "D:/build/vc_redist.x64.exe",
+  "outputDirectory": "D:/build/harness-runtime"
 }
 ```
 
@@ -47,6 +49,7 @@ pnpm harness:prepare
 $env:STEP_BACKEND='stepcode-local'
 $env:ZCODE_ENV='production'
 pnpm --filter @zcode/desktop build:no-runtime-assets
+$env:HARNESS_RUNTIME_STAGE='D:/build/harness-runtime'
 pnpm harness:pack
 ```
 

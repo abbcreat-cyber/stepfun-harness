@@ -40,10 +40,9 @@ test("native find_tools preserves zero matches and returns selected skill facts,
   assert.ok(output.includes("no matching tools"), output);
   assert.ok(output.includes("installed\\\":true"), output);
   assert.ok(output.includes("零命中不代表未安装"), output);
-  assert.ok(JSON.stringify(requests[0].messages.filter(m => ["system", "developer"].includes(m.role))).includes("ORIGINAL_SLIDES_ACTIVATED"));
-  const userContent = requests[0].messages.filter(m => m.role === "user").at(-1).content;
-  assert.equal(typeof userContent === "string" ? userContent : userContent.map(part => part.text ?? "").join(""), prompt);
+  assert.ok(JSON.stringify(requests[0].messages.filter(m => m.role === "user")).includes("ORIGINAL_SLIDES_ACTIVATED"));
+  assert.ok(requests[0].messages.filter(m => m.role === "user").some(m => (typeof m.content === "string" ? m.content : m.content.map(part => part.text ?? "").join("")) === prompt));
   await client.promptAndWait("普通问题");
-  assert.ok(!JSON.stringify(requests.at(-1).messages.filter(m => ["system", "developer"].includes(m.role))).includes("ORIGINAL_SLIDES_ACTIVATED"));
+  assert.ok(!JSON.stringify(requests.at(-1).messages).includes("ORIGINAL_SLIDES_ACTIVATED"));
   assert.equal(requests.length, 3);
 });
