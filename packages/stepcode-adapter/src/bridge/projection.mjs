@@ -148,7 +148,7 @@ export function createProjection(ctx) {
 			}
 			if (ctx.sessionStatistics(ctx.primarySession.sessionId).handle(event)) queueStreamDeltas([{op:"state.updated",patch:{usage:ctx.sessionStatistics(ctx.primarySession.sessionId).usage()}}]);
 			if (ctx.streamProjection) queueStreamDeltas(ctx.streamProjection.handle(event));
-			if (event.type === "tool_execution_start") ctx.workflowBridge.observeTools?.(ctx.primarySession.sessionId);
+			if (["tool_execution_start", "tool_execution_end", "agent_settled"].includes(event.type)) ctx.workflowBridge?.observeTools?.(ctx.primarySession.sessionId);
 			switch (event.type) {
 				case "agent_start": {
 					const activeHeader = ctx.conversationRows.find(row => row.kind === "turnHeader" && row.turnId === ctx.currentTurnId && row.state === "running");

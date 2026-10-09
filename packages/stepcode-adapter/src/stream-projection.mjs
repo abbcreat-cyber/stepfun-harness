@@ -127,6 +127,7 @@ export class StepStreamProjection {
         row.status = "running";
       }
       if (event.type === "tool_execution_end") {
+        delete row.interactionId;
         row.output = { text: resultText(event.result) };
         row.status = event.isError ? "error" : "success";
         const deferred = event.isError ? openingDeferral(event.result) : null;
@@ -145,7 +146,7 @@ export class StepStreamProjection {
       for (const row of this.rows) {
         if (row.turnId !== this.turnId) continue;
         if (row.state === "streaming") { row.state = this.outcome === "completedSuccess" ? "complete" : "interrupted"; this.emitRow(row); }
-        if (row.kind === "toolCall" && ["running", "inputStreaming"].includes(row.status)) { row.status = "cancelled"; this.emitRow(row); }
+        if (row.kind === "toolCall" && ["running", "inputStreaming", "pendingApproval"].includes(row.status)) { row.status = "cancelled"; delete row.interactionId; this.emitRow(row); }
       }
     }
     return this.deltas;

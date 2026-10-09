@@ -12,6 +12,7 @@ import { SessionStatistics } from "../session-statistics.mjs";
 import { readSessionTimingHistory } from "../session-timing-history.mjs";
 import { log } from "./logging.mjs";
 import { BridgeError } from "./errors.mjs";
+import { settleInterruptedHistory } from "./interrupted-history.mjs";
 
 /** @param {any} ctx 共享桥接状态（primarySession/conversationRows/STATE_DIR 等） */
 export function createConversationStore(ctx) {
@@ -30,7 +31,12 @@ export function createConversationStore(ctx) {
 		return join(ctx.STATE_DIR, "conversations", `${encodeURIComponent(sessionId)}.json`);
 	}
 	function readConversation(sessionId) {
-		try { return JSON.parse(readFileSync(conversationFile(sessionId), "utf8")); }
+		try {
+			const saved = JSON.parse(readFileSync(conversationFile(sessionId), "utf8"));
+			// router 保证单会话 worker 所有权；主路由的索引读取不得结束其他活动 worker。
+			return ctx.IS_SESSION_WORKER && ctx.primarySession?.sessionId !== sessionId
+				? settleInterruptedHistory(saved) : saved;
+		}
 		catch { return null; }
 	}
 	const statisticsBySession = new Map();

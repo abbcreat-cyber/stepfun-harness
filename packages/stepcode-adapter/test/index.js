@@ -33,6 +33,7 @@ import "../suites/session-plugin-catalog.mjs";
 import "../suites/embedded-browser.mjs";
 
 import "../suites/workflow.mjs";
+import "../suites/workflow-snippet-lifecycle.mjs";
 
 import "../suites/session-statistics.mjs";
 

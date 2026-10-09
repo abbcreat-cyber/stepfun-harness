@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { workflowToolName } from "./catalog.mjs";
+import { confirmWorkflow, discardFinishedConfirmations } from "./confirmation.mjs";
 import { WorkflowToolAdmission } from "./tool-admission.mjs";
 import { isNativeToolPermission, resolveNativePermissionAction } from "../permission-policy.mjs";
 import { askDesktopQuestionnaire } from "../questionnaire-interaction.mjs";
@@ -190,44 +191,7 @@ export function createWorkflowBridge(options) {
           getClientEnvironment: options.getClientEnvironment,
           turnId: options.turnId,
           onUiRequest: (request, signal) => permission(sessionId, request, signal),
-          confirm: (request) =>
-            new Promise((resolve) => {
-              const interactionId = `workflow-confirm-${randomUUID()}`;
-              const row = options
-                .rows(sessionId)
-                .find((row) => row.toolCallId === request.toolCallId);
-              if (!row) {
-                resolve({ approved: false, feedback: "未找到对应的工作流工具调用，请重新创建" });
-                return;
-              }
-              row.display = request.display;
-              row.status = "pendingApproval";
-              row.interactionId = interactionId;
-              pending.set(interactionId, {
-                sessionId,
-                resolve,
-                item: {
-                  interactionId,
-                  kind: "permission",
-                  anchorRowId: row.rowId,
-                  createdAt: Date.now(),
-                  payload: {
-                    kind: "permission",
-                    toolCallId: request.toolCallId,
-                    toolName: request.toolName ?? "CreateWorkflow",
-                    summary: request.toolName === "EvalWorkflowSnippet" ? "确认执行工作流片段中的命令" : "确认运行工作流",
-                    detail: request.input,
-                    display: request.display,
-                    freeText: true,
-                    options: [
-                      { optionId: "allow", label: "运行", kind: "allowOnce" },
-                      { optionId: "deny", label: "拒绝", kind: "deny" },
-                    ],
-                  },
-                },
-              });
-              options.changed(sessionId);
-            }),
+          confirm: request => confirmWorkflow(options, pending, sessionId, request),
           onDisplay: (id, display) => {
             const row = options.rows(sessionId).find((row) => row.toolCallId === id);
             if (row) row.display = display;
@@ -279,7 +243,7 @@ export function createWorkflowBridge(options) {
         case "CreateWorkflow":
           return instance.create(params, toolCallId, origin);
         case "EvalWorkflowSnippet":
-          return instance.evalSnippet(params, toolCallId);
+          return instance.evalSnippet(params, toolCallId, context.signal);
         case "AmendWorkflow":
           return instance.amend(params, toolCallId, origin);
         case "ResolveWorkflowQuestion":
@@ -301,7 +265,10 @@ export function createWorkflowBridge(options) {
       }
     },
     service,
-    observeTools: sessionId => admission.observe(sessionId),
+    observeTools(sessionId) {
+      discardFinishedConfirmations(options, pending, sessionId);
+      admission.observe(sessionId);
+    },
     async savedRuns(params) {
       const runs = [],
         limit = Math.max(1, Math.min(50, params.limit ?? 20));
@@ -377,6 +344,7 @@ export function createWorkflowBridge(options) {
       };
     },
     resolve(sessionId, interactionId, answer) {
+      discardFinishedConfirmations(options, pending, sessionId);
       const request = pending.get(interactionId);
       if (!request || request.sessionId !== sessionId)
         throw new Error("确认请求已失效或不属于当前会话");
@@ -400,7 +368,7 @@ export function createWorkflowBridge(options) {
       const row = options
         .rows(sessionId)
         .find((row) => row.toolCallId === request.item.payload.toolCallId);
-      if (row) {
+      if (row && !request.workflowConfirmation) {
         row.status = approved ? "running" : "cancelled";
         delete row.interactionId;
       }

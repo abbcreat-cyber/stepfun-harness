@@ -30,7 +30,7 @@ export async function readSource(service, inline, path) {
   return inline;
 }
 
-export async function evalSnippet(input, toolCallId) {
+export async function evalSnippet(input, toolCallId, requestSignal) {
   const code = await readSource(this, input.code, input.path);
   const timeoutMs = input.timeoutMs ?? 60000;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000)
@@ -42,20 +42,20 @@ export async function evalSnippet(input, toolCallId) {
     : engine.collectWorldRunCommands(program, engine.collectSites(program));
   if (commands.diagnostics.length)
     return { ok: false, diagnostics: commands.diagnostics, executed: false };
-  if (commands.commands.length) {
-    const answer = await this.options.confirm({
-      toolCallId,
-      toolName: "EvalWorkflowSnippet",
-      input: { code, commands: commands.commands },
-      hash: "snippet",
-      display: undefined,
-    });
-    if (!answer.approved) return { ok: false, status: "denied", executed: false };
-  }
+  // deadline 覆盖等待确认，否则 MCP 超时后确认仍会永久悬挂。
   const controller = new AbortController();
-  const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs)]);
+  const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs), ...(requestSignal ? [requestSignal] : [])]);
   this.snippets.add(controller);
   try {
+    if (commands.commands.length) {
+      const answer = await this.options.confirm({
+        toolCallId, toolName: "EvalWorkflowSnippet",
+        input: { code, commands: commands.commands }, hash: "snippet", display: undefined, signal,
+      });
+      if (!answer.approved || signal.aborted)
+        return { ok: false, status: signal.aborted ? "cancelled" : "denied", executed: false };
+    }
+    signal.throwIfAborted();
     const execution = createNodeExecutionAdapter();
     const port = createDynamicWorkflowSnippetService({
       fileSystemPort: createNodeFileSystemAdapter(),

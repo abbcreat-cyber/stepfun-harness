@@ -128,8 +128,14 @@ export async function startEmbeddedBrowserRelay({
       }
       if (request.url === "/workflow") {
         if (!workflowRequest) throw new Error("工作流尚未就绪");
-        const result = await workflowRequest(command, context);
-        response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+        const controller = new AbortController();
+        const disconnected = () => { if (!response.writableEnded) controller.abort("disconnected"); };
+        response.once("close", disconnected);
+        try {
+          if (response.destroyed) controller.abort("disconnected");
+          const result = await workflowRequest(command, { ...context, signal: controller.signal });
+          if (!response.destroyed) response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+        } finally { response.removeListener("close", disconnected); }
         return;
       }
       if (!allowed.has(command.method)) throw new Error("不支持的内置浏览器操作");

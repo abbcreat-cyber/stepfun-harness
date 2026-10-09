@@ -48,7 +48,7 @@ export class StepWorkflowService extends WorkflowReadModel {
     this.guideRead = true;
     return guide;
   }
-  evalSnippet(input, toolCallId) { return evalSnippet.call(this, input, toolCallId); }
+  evalSnippet(input, toolCallId, signal) { return evalSnippet.call(this, input, toolCallId, signal); }
   amend(input, toolCallId, origin, control) { return amend.call(this, input, toolCallId, origin, control); }
   resolveQuestion(input) { return this.questions.resolve(input.question_id, input.answer); }
 

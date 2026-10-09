@@ -71,10 +71,18 @@ async function connection() {
     throw error;
   }
 }
-createInterface({ input: process.stdin }).on("line", async (line) => {
+const activeCalls = new Map();
+const input = createInterface({ input: process.stdin });
+input.on("close", () => { for (const controller of activeCalls.values()) controller.abort(); });
+input.on("line", async (line) => {
   let frame;
   try {
     frame = JSON.parse(line);
+    // SDK 超时会发取消通知；必须断开 HTTP，让确认/沙箱随调用一起结束。
+    if (frame.method === "notifications/cancelled") {
+      activeCalls.get(frame.params?.requestId)?.abort();
+      return;
+    }
     if (frame.id === undefined) return;
     if (frame.method === "initialize")
       return send(frame.id, {
@@ -101,11 +109,13 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     if (endpoint.hostname !== "127.0.0.1" || endpoint.protocol !== "http:")
       throw new Error("工作流桥地址无效");
     endpoint.pathname = "/workflow";
+    const controller = new AbortController();
+    activeCalls.set(frame.id, controller);
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { authorization: `Bearer ${info.token}`, "content-type": "application/json" },
       body: JSON.stringify({ method: frame.params.name, params: frame.params.arguments ?? {} }),
-      signal: AbortSignal.timeout(3600000),
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3600000)]),
     });
     const result = await response.json();
     // 原版全文超过 Step 的 50KB 预算；一行 JSON 会被截成零行，连语言规则都读不到。
@@ -124,5 +134,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   } catch (error) {
     if (frame?.id !== undefined)
       send(frame.id, { isError: true, content: [{ type: "text", text: error.message }] });
+  } finally {
+    if (frame?.id !== undefined) activeCalls.delete(frame.id);
   }
 });
