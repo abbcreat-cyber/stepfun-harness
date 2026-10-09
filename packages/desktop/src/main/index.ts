@@ -87,6 +87,7 @@ import { createCuaPipFocusRouter, resolveCuaPipWindowKey } from "./cuaPipFocusRo
 import { createDesktopTelemetryFetch } from "./desktopTelemetryFetch.js";
 import {
   acknowledgePostUpdateReleaseNotes,
+  checkForUpdateMenuClick,
   getAutoUpdaterState,
   hydratePendingPostUpdateReleaseNotes,
   initAutoUpdater,
@@ -2169,7 +2170,10 @@ app.whenReady().then(async () => {
       }
     },
     getUpdateState: getAutoUpdaterState,
-    openUpdateStatusWindow,
+    openUpdateStatusWindow: () => {
+      if (process.env.STEP_BACKEND === "stepcode-local") checkForUpdateMenuClick();
+      else openUpdateStatusWindow();
+    },
     getAutoUpdatePreferences,
     setAutoDownloadAndInstallUpdates,
     getDesktopSessionActivity: () => ({

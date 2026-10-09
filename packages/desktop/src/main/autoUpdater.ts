@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { StepcodeRuntimeUpdater } from "./stepcodeRuntimeUpdater.js";
 import { HarnessUpdates } from "./harnessUpdates.js";
+import { HarnessPreparedDownload } from "./harnessPreparedDownload.js";
 /* eslint-disable max-lines -- autoUpdater 需要集中维护 Electron 事件、菜单状态与 IPC 交互，过度拆分会让更新状态流更难追踪 */
 import type { ISettingService } from "@zcode/services";
 import {
@@ -1473,7 +1474,14 @@ export async function acknowledgePostUpdateReleaseNotes(
 export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Promise<void> {
   if (process.env.STEP_BACKEND === "stepcode-local") {
     autoUpdaterDisabledForProductFlavor = false;
-    openHarnessUpdateWindow = options.openStatusWindow;
+    openHarnessUpdateWindow = () => {
+      // 检查/差分索引在后台完成，不能先弹空进度窗口让用户等待。
+      void harnessUpdates!.prepareToShow().then(() => options.openStatusWindow?.()).catch(error => {
+        const target = BrowserWindow.getAllWindows().find(win => !win.isDestroyed() && win.getTitle() !== "Step Code Mini");
+        target?.webContents.send(PlatformChannels.UpdateCheckResult, { kind: "error", message: error instanceof Error ? error.message : String(error) } satisfies UpdateCheckResultPayload);
+      });
+    };
+    const preparedDownloads = new HarnessPreparedDownload(autoUpdater);
     harnessUpdates = new HarnessUpdates(autoUpdater,
       { desktop: app.getVersion(), step: process.env.STEPCODE_RUNTIME_VERSION || "0.1.3" },
       process.env.STEPCODE_RUNTIME_DIR || join(app.getPath("userData"), "stepcode-runtime"),
@@ -1483,6 +1491,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
         else { app.relaunch(); app.quit(); }
       },
       state => { readyUpdateVersion = state.kind === "update-downloaded" ? state.version : null; setAutoUpdaterMenuState(state); },
+      { prepareDesktop: info => preparedDownloads.prepare(info), usePreparedDesktop: () => preparedDownloads.usePrepared() },
     );
     stepcodeUpdater = harnessUpdates.step;
     ipcMain.handle(PlatformChannels.ManageHarnessUpdate, (_event, request) => harnessUpdates!.command(request));
@@ -1874,7 +1883,6 @@ export function requestForceAutoUpdate(
 export function checkForUpdateMenuClick(originWindow?: BrowserWindow | null) {
   if (harnessUpdates) {
     openHarnessUpdateWindow?.();
-    void harnessUpdates.command({ action: "check" });
     return;
   }
   if (stepcodeUpdater) {

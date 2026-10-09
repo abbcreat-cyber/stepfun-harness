@@ -3,6 +3,7 @@ import type { HarnessUpdateSnapshot, HarnessUpdateTarget, HarnessUpdateRequest, 
 import { ArrowDownToLine, Check, Cpu, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 import stepLogo from "@/assets/step-app-icon.png";
 import { Button } from "@/components/ui/button.js";
+import { harnessDownloadProgress } from "@/lib/harnessDownloadProgress.js";
 
 export function HarnessUpdateCenter({ platform, initial, english }: { platform: IPlatformService; initial: HarnessUpdateSnapshot; english: boolean }) {
   const [snapshot, setSnapshot] = useState(initial);
@@ -38,8 +39,7 @@ export function HarnessUpdateCenter({ platform, initial, english }: { platform: 
         const checking = state.kind === "checking", downloading = state.kind === "download-progress", ready = state.kind === "update-downloaded", available = state.kind === "update-available";
         const next = "version" in state ? state.version : undefined;
         const notes = "releaseNotes" in state ? state.releaseNotes?.markdown : "";
-        const raw = downloading ? Number.parseFloat(state.progress) : 0;
-        const progress = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+        const download = downloading ? harnessDownloadProgress(state, english) : undefined;
         const Icon = target === "desktop" ? Sparkles : Cpu;
         return <section key={target} data-testid={`harness-update-${target}`} className="rounded-xl border border-border bg-surface p-4">
           <div className="flex items-start gap-3">
@@ -50,15 +50,15 @@ export function HarnessUpdateCenter({ platform, initial, english }: { platform: 
           <div className="mt-4 flex min-h-8 items-center justify-between gap-3">
             <p aria-live="polite" className="flex items-center gap-1.5 text-ui-caption text-foreground-subtle">
               {checking || downloading ? <LoaderCircle className="size-3.5 animate-spin motion-reduce:animate-none" /> : item.checked && !available && !ready && !item.error ? <Check className="size-3.5 text-icon-blue" /> : null}
-              {checking ? t("正在检查…", "Checking…") : downloading ? `${t("下载中", "Downloading")} ${progress}%` : ready ? t("准备就绪", "Ready to install") : available ? `v${next} ${t("可更新", "available")}` : item.error ? t("检查未完成", "Check incomplete") : item.checked ? t("已是最新版本", "Up to date") : t("尚未检查", "Not checked yet")}
+              {checking ? t("正在检查…", "Checking…") : downloading ? download?.label : ready ? t("准备就绪", "Ready to install") : available ? `v${next} ${t("可更新", "available")}` : item.error ? t("检查未完成", "Check incomplete") : item.checked ? t("已是最新版本", "Up to date") : t("尚未检查", "Not checked yet")}
             </p>
-            {downloading ? <Button variant="ghost" size="sm" onClick={() => void action({ action: "cancel", target })}>{t("取消", "Cancel")}</Button> :
+            {downloading ? <Button variant="ghost" size="sm" disabled={download?.cancelling} onClick={() => void action({ action: "cancel", target })}>{t("取消", "Cancel")}</Button> :
               <Button size="sm" variant={ready || available ? "default" : "outline"} disabled={checking} onClick={() => ready ? setConfirm(target) : void action({ action: available ? "download" : "check", target })}>
                 {available ? <ArrowDownToLine className="mr-1.5 size-3.5" /> : null}{ready ? t("重启并更新", "Restart & update") : available ? t("下载更新", "Download") : t("检查更新", "Check")}
               </Button>}
           </div>
-          {downloading && <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} className="mt-3 h-1 overflow-hidden rounded-full bg-border"><div className="h-full rounded-full bg-icon-blue transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${progress}%` }} /></div>}
-          {item.error && <p className="mt-2 break-words text-ui-caption text-destructive">{item.error.includes("404") || item.error.includes("No published versions") ? t("暂未找到已发布版本，可稍后重试。", "No published release found. Try again later.") : item.error}</p>}
+          {download && <><p data-testid={`harness-update-${target}-bytes`} className="mt-1 font-mono text-ui-caption text-foreground-subtle">{download.bytes}</p><div role="progressbar" aria-label={download.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={download.determinate ? download.percent : undefined} className="mt-3 h-1 overflow-hidden rounded-full bg-border"><div className={`h-full rounded-full bg-icon-blue ${download.determinate ? "transition-[width] duration-300 motion-reduce:transition-none" : "w-1/3 animate-pulse motion-reduce:animate-none"}`} style={download.determinate ? { width: `${download.percent}%` } : undefined} /></div></>}
+          {item.error && <p className="mt-2 break-words text-ui-caption text-destructive">{item.error === "HARNESS_DOWNLOAD_STALLED" ? t("下载连续 90 秒没有新进度，已停止。请检查网络后重试。", "No download progress for 90 seconds. Stopped; check your connection and retry.") : item.error.includes("404") || item.error.includes("No published versions") ? t("暂未找到已发布版本，可稍后重试。", "No published release found. Try again later.") : item.error}</p>}
           {notes && <details className="mt-3 border-t border-border pt-2 text-ui-caption text-foreground-subtle"><summary className="cursor-pointer select-none">{t("更新内容", "What's new")}</summary><p className="mt-2 max-h-24 overflow-y-auto whitespace-pre-wrap break-words [scrollbar-width:none]">{notes}</p></details>}
         </section>;
       })}

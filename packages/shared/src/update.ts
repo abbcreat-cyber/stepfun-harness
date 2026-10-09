@@ -53,6 +53,8 @@ export type UpdateStatePayload =
       kind: "download-progress";
       enabled: boolean;
       progress: string;
+      downloadPhase?: "preparing" | "transferring" | "verifying" | "cancelling";
+      bytesPerSecond?: number;
       transferredBytes?: number;
       totalBytes?: number;
       version?: string;
