@@ -11,6 +11,7 @@
 - 片段返回保留原 artifact/kind/status 等字段，增加统一 diagnostics/logs/response/durationMs；通过既有 eval_workflow_snippet display 协议交给现成前端卡片。成功卡显示已执行、耗时与可展开返回值；失败保留诊断。
 - display 只投影真实结果，不根据标题、模型正文或停止后的历史补造成功。停止/拒绝/编译错误不得被标为成功。
 - 原版工作流技能正文保留，适配说明明确元数据与最小冒烟流程，避免简单连通性测试变成无关环境检查。
+- 老用户插件声明曾保留旧版本绝对路径。安装入口须在同一插件状态锁内迁移受管 MCP 的 command/args，保留 env、timeout、其他服务和启停状态；不接管同名自建插件，不因已有声明而永远跳过升级。无变化时不重写文件。
 
 ```text
 模型参数 → 声明校验 → 工作流唯一 owner / admission → 原沙箱与授权

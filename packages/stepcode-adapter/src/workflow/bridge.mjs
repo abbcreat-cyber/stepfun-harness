@@ -2,55 +2,15 @@
  * 单会话版）：必须与 services/pending/states 三个 Map 闭包私有状态同域，拆出反而
  * 会把这些私有态公有化；skipComments 口径下超出的 8 行全部是该函数的实现。 */
 import { readWorkflowGuide } from "./guide.mjs";
-import { mkdir, access, writeFile, readdir } from "node:fs/promises";
+import { mkdir, access, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { workflowToolName } from "./catalog.mjs";
 import { confirmWorkflow, discardFinishedConfirmations } from "./confirmation.mjs";
 import { WorkflowToolAdmission } from "./tool-admission.mjs";
 import { isNativeToolPermission, resolveNativePermissionAction } from "../permission-policy.mjs";
 import { askDesktopQuestionnaire } from "../questionnaire-interaction.mjs";
-
-export async function installWorkflowPlugin(root) {
-  if (!root) return;
-  for (const directory of ["plugins", "disabled-plugins"]) {
-    try {
-      await access(join(root, directory, "step_workflows", "step.plugin.json"));
-      return;
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-  }
-  const target = join(root, "plugins", "step_workflows");
-  await mkdir(target, { recursive: true });
-  await writeFile(
-    join(target, "step.plugin.json"),
-    JSON.stringify(
-      {
-        id: "step_workflows",
-        name: "工作流",
-        version: "1.0.0",
-        description: "复用动态工作流引擎，由 StepCode 执行子任务。",
-        mcpServers: {
-          step_workflows: {
-            command: process.execPath,
-            args: [
-              fileURLToPath(new URL("../../bin/workflow-mcp.mjs", import.meta.url)),
-              "--bridge-dir",
-              join(root, "browser-bridges"),
-            ],
-          },
-        },
-      },
-      null,
-      2,
-    ),
-    { flag: "wx" },
-  ).catch((error) => {
-    if (error.code !== "EEXIST") throw error;
-  });
-}
+export { installWorkflowPlugin } from "./plugin-install.mjs";
 
 /** 桥接只拥有交互等待；运行与投影的事实来自同一个持久工作流服务。 */
 export function createWorkflowBridge(options) {
