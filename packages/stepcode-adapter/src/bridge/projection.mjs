@@ -19,9 +19,11 @@ import {
 	nextId,
 } from "../wire-shapes.mjs";
 import { log } from "./logging.mjs";
+import { createSnapshotPersistence } from "./snapshot-persistence.mjs";
 
 /** @param {any} ctx 共享桥接状态（primarySession/ledger/notify/workflowBridge 等） */
 export function createProjection(ctx) {
+	const persistSnapshot = createSnapshotPersistence(ctx);
 	function flushStreamDeltas() {
 		if (streamFlushTimer) clearTimeout(streamFlushTimer);
 		streamFlushTimer = null;
@@ -65,7 +67,7 @@ export function createProjection(ctx) {
 		const topic = targetTopic ?? `conversation/${ctx.primarySession.sessionId}`;
 		const subscriptionId = targetSubscriptionId ?? ctx.v4Subscriptions.get(topic);
 		if (!subscriptionId) return;
-		if (ctx.primarySession && topic === `conversation/${ctx.primarySession.sessionId}`) ctx.persistConversation();
+		if (ctx.primarySession && topic === `conversation/${ctx.primarySession.sessionId}`) persistSnapshot();
 		const saved = ctx.readConversation(topic.slice("conversation/".length));
 		const rowsForFrame = ctx.primarySession && topic === `conversation/${ctx.primarySession.sessionId}` ? ctx.conversationRows : (saved?.rows ?? []);
 		const terminalState = rowsForFrame.filter(row => row.kind === "turnHeader").at(-1)?.state;
@@ -223,7 +225,9 @@ export function createProjection(ctx) {
 					ctx.activeBotDeliveryTarget = undefined;
 					const header = ctx.conversationRows.find((row) => row.kind === "turnHeader" && row.turnId === ctx.currentTurnId);
 					if (header) {
-						header.state = ctx.streamProjection?.outcome ?? (event.type === "step_client_failed" ? "failed" : "completedSuccess");
+						const outcome = ctx.streamProjection?.interruptedByUser ? "completedInterrupted" : ctx.streamProjection?.outcome;
+						if (ctx.streamProjection && outcome) ctx.streamProjection.outcome = outcome;
+						header.state = outcome ?? (event.type === "step_client_failed" ? "failed" : "completedSuccess");
 						header.endedAt = Date.now();
 						header.activeMs = header.endedAt - header.startedAt;
 					}

@@ -440,8 +440,6 @@ const methodHandlers = {
 				return rememberAck(makeCommandAck({ commandId, revisionAtDecision }));
 			}
 			case "stop": {
-				if (ctx.primarySession) ctx.workflowBridge.cancelPending(ctx.primarySession.sessionId);
-				if (ctx.streamProjection) ctx.streamProjection.outcome = "completedInterrupted";
 				// stop 冻结台账（spec §4/§6）：保留队列项 + autoDrain=false +
 				// pauseReason=stopped，再让底座 abort 清池停轮。
 				await ctx.stopCurrentTurn();

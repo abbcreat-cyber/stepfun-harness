@@ -75,6 +75,7 @@ import "../suites/custom-provider-bridge.mjs";
 // 使「声明被删必红」随全量套件自动执行。
 import "../suites/shared-passthrough.mjs";
 import "../suites/managed-followup.mjs";
+import "../suites/stop-persistence.mjs";
 import "../suites/workflow-visibility.mjs";
 import "../suites/workflow-activity.mjs";
 import "../suites/workflow-guide-wire.mjs";

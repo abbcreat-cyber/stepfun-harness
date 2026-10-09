@@ -62,14 +62,23 @@ export function createManagedQueue(ctx) {
  }
  async function stopCurrentTurn() {
   ctx.ledger.holdAll("stopped");
-  if (ctx.streamProjection) ctx.streamProjection.outcome = "completedInterrupted";
-  ctx.broadcastConversationSnapshot();
-  if (!ctx.client?.isRunning()) return;
+  if (ctx.streamProjection) {
+   ctx.streamProjection.outcome = "completedInterrupted";
+   ctx.streamProjection.interruptedByUser = true;
+  }
+  const running = ctx.client?.isRunning();
   // 先订阅终态再 abort，不能用固定 sleep 假装底座已经停止。
-  const settled = ctx.turnBusy ? ctx.client.waitForIdle(15000) : null;
+  const settled = running && ctx.turnBusy ? ctx.client.waitForIdle(15000) : null;
   settled?.catch(() => {});
-  await ctx.client.abort();
-  if (settled) await settled;
+  // 先实际发出 abort，再做派生快照；磁盘 IO 不能成为用户停止工具执行的前置条件。
+  const aborted = running ? ctx.client.abort() : null;
+  try {
+   // cancelPending 的 changed 回调也会写侧栏摘要；它失败仍必须等到底座真正停止。
+   try { if (ctx.primarySession) ctx.workflowBridge?.cancelPending?.(ctx.primarySession.sessionId); }
+   catch (error) { log(`stop pending workflow notification failed: ${error.message}`); }
+   await aborted;if (settled) await settled;
+  }
+  finally { ctx.broadcastConversationSnapshot(); }
  }
  function requireQueued(id) {
   const entry = ctx.ledger.managedQueued().find(e => e.queueItemId === id);
