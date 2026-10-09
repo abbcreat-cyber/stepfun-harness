@@ -78,6 +78,7 @@ export function makeConversationSnapshot({
 		},
 		inputRouting: inputRouting ?? { mode: "startNow" },
 		config: {
+			...(modelSelection ? { modelSelection } : {}),
 			// config 反映会话实际选型（P0-04：切换后快照不得停留在静态默认值）。
 			provider: modelSelection?.providerId ?? "step",
 			model: modelSelection?.modelId ?? "step-5-preview",

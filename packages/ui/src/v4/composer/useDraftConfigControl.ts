@@ -27,6 +27,7 @@ import { useZCodeSessionService } from "@/hooks/useZCodeSessionService.js";
 import { useSettings } from "@/hooks/useSettingService.js";
 import { parseModelPickerValue } from "@/lib/zcodeSessionProjection.js";
 import { initializeNewTaskDraft } from "@/v4/composer/newTaskDraft.js";
+import { recoverSessionDraftSelection } from "@/v4/composer/sessionDraftRecovery.js";
 import {
   clearV4ComposerDraft,
   persistV4ComposerDraft,
@@ -103,7 +104,7 @@ export function useDraftConfigControl(params: {
   workspacePath: string;
   workspaceIdentity?: string;
   provider?: ZCodeProvider;
-  /** 会话切换读取对应 scope；已有空选择也必须保留。 */
+  /** 会话切换读取对应 scope；已有选择保留，旧空模型草稿仅从同一会话迁移。 */
   sessionId: string | null;
   /** 仅匹配当前 Session 的首份投影可用作初始化；null 表示还没恢复完成。 */
   sessionConfig?: Partial<SessionConfigState> | null;
@@ -155,7 +156,7 @@ export function useDraftConfigControl(params: {
     const mode = submissionModeSchema.safeParse(sessionConfig?.mode);
     // Recent 是初始化原意图，不先按旧 Provider 是否仍在候选中删掉；下一次输入读取
     // 由同一解析入口对应当前账号，或暂时留空。否则冷启动会绕过统一账号对应规则。
-    // mode 是已初始化标记：历史恢复给出的空选择也是确定结果，后续 Snapshot 不得填满。
+    // mode 只标记模式初始化；旧适配器造成的空模型由下方同会话迁移补齐，不借默认值填充。
     draft =
       initializeAsNewTask && modelSelectionView
         ? initializeNewTaskDraft(draft, workspacePath, workspaceIdentity, modelSelectionView)
@@ -167,6 +168,7 @@ export function useDraftConfigControl(params: {
           };
   }
   if (sessionConfig) {
+    if (!initializeAsNewTask) draft = recoverSessionDraftSelection(draft, sessionConfig);
     draft = applyComposerPlanTransition(draft, sessionConfig.planTransition);
     draft = applyComposerPermissionGrant(draft, sessionConfig.permissionGrant);
   }

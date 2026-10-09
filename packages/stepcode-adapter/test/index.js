@@ -76,6 +76,7 @@ import "../suites/custom-provider-bridge.mjs";
 import "../suites/shared-passthrough.mjs";
 import "../suites/managed-followup.mjs";
 import "../suites/stop-persistence.mjs";
+import "../suites/session-model-recovery.mjs";
 import "../suites/workflow-visibility.mjs";
 import "../suites/workflow-activity.mjs";
 import "../suites/workflow-guide-wire.mjs";

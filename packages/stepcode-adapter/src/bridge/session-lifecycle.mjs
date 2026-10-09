@@ -211,7 +211,7 @@ export function createSessionLifecycle(ctx) {
 
 	/**
 	 * 应用思考档位（session/setThoughtLevel 与 v4 switchModelConfig 共用）：
-	 * 请求值必须是底座原生档位（get_available_thinking_levels）之一，否则如实拒绝；
+	 * 与发送共用模型准备入口：供应商 map 负责原始 UI 选项，否则校验底座原生档位；
 	 * "default" 表示沿用模型默认——底座无"查询/重置默认档位"原语，此处不改动原生
 	 * 档位（不猜一个值），快照 config.thought 持续反映 get_state 的实际生效值。
 	 * 应用后以 get_state 回读为准（不回显请求值冒充已生效）。
@@ -220,11 +220,15 @@ export function createSessionLifecycle(ctx) {
 		const session = requireSession();
 		const normalized = typeof requested === "string" ? requested.trim().toLowerCase() : "";
 		if (!normalized) return;
-		return ctx.runWithPreparedClient({ requireIdle: true }, async client => {
+		// 定时 resume 会携带 enabled/disabled；不能绕过正式选项映射把它当作 SDK 档位。
+		const selection = normalized === "default" ? undefined : {
+			...session.modelSelection,
+			options: { ...session.modelSelection?.options, reasoningLevel: normalized },
+		};
+		return ctx.runWithPreparedClient({ requireIdle: true, selection, selectModel: !!selection }, async client => {
 		const levels = await client.getAvailableThinkingLevels();
-		const level = ctx.resolveThoughtLevel(normalized, levels, (await client.getState()).thinkingLevel);
-		if (level) await client.setThinkingLevel(level);
 		const rpcState = await client.getState();
+		if (selection) session.modelSelection = selection;
 		if (typeof rpcState.thinkingLevel === "string" && rpcState.thinkingLevel) {
 			session.thoughtLevel = rpcState.thinkingLevel;
 		}
