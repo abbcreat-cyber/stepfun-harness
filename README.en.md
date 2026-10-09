@@ -15,6 +15,8 @@
 
 </div>
 
+![StepFun Harness welcome screen](docs/screenshots/welcome.png)
+
 StepFun Harness connects the Step Code agent runtime to a full desktop interface. Models, local files, terminal tools, an embedded browser, plugins, and workflows share one workspace. Use Step Plan alongside API connections and custom providers, and follow tasks through their progress, parallel agents, and final artifacts.
 
 > **An independent community project, not an official StepFun, Z.ai, DeepSeek, or OpenAI product.** Windows x64 installer and source code are provided. Core code is open source; bundled plugins retain separate licenses. Four original document skills have non-commercial restrictions. See [LICENSES.md](LICENSES.md).

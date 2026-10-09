@@ -15,6 +15,8 @@
 
 </div>
 
+![阶跃星辰 Harness 首页](docs/screenshots/welcome.png)
+
 阶跃星辰 Harness 将 Step Code 底座接入完整桌面界面，把模型、文件、终端、浏览器、插件与工作流放进同一个工作空间。使用 Step Plan 订阅，或配置 API 和自定义模型；任务过程、并行代理与最终产物，都能在界面中查看。
 
 > **社区项目，非阶跃星辰、Z.ai、DeepSeek 或 OpenAI 官方产品。** 提供 Windows x64 安装包与源码。主工程开源；随附第三方插件保留独立许可，四类原版文档技能含非商业限制，详见 [LICENSES.md](LICENSES.md)。
