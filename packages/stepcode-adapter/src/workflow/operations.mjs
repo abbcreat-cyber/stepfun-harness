@@ -7,7 +7,10 @@ import {
   createNodeFileSystemAdapter,
   createNodeExecutionAdapter,
   buildImportedCache,
+  preflightAmendImport,
+  formatModelPickerValue,
 } from "./dependencies.mjs";
+import { persistedWorkflowModel } from "./model-selection.mjs";
 
 export async function readSource(service, inline, path) {
   if ((inline !== undefined) === (path !== undefined))
@@ -68,14 +71,14 @@ export async function evalSnippet(input, toolCallId) {
   }
 }
 
-export async function amend(input, toolCallId, origin) {
+export async function amend(input, toolCallId, origin, control = {}) {
   const runId = input.run_id ?? input.runId;
   const previous = this.assertRun(runId);
   if (this.amending.has(runId)) return { ok: false, reason: "amend_in_progress" };
   this.amending.add(runId);
   try {
     const keys = Object.keys(input).filter((key) => !["run_id", "runId"].includes(key));
-    if (keys.length === 1 && keys[0] === "max_concurrency" && this.active.has(runId)) {
+    if (!control.fromSettings && keys.length === 1 && keys[0] === "max_concurrency" && this.active.has(runId)) {
       const limit = input.max_concurrency;
       if (limit !== null && (!Number.isInteger(limit) || limit < 1 || limit > 8))
         throw new Error("并发上限须为 1–8 或 null");
@@ -97,12 +100,16 @@ export async function amend(input, toolCallId, origin) {
       script_path: undefined,
       path: undefined,
       name: input.name ?? previous.name,
+      subagent_model: input.subagent_model === undefined ? persistedWorkflowModel(this, runId) : input.subagent_model,
       max_concurrency:
         input.max_concurrency === null
           ? 8
           : (input.max_concurrency ?? previous.caps.maxConcurrency),
     });
     if (!prepared.ok) return prepared;
+    if (control.fromSettings && formatModelPickerValue(prepared.model) === persistedWorkflowModel(this, runId)
+      && prepared.caps.maxConcurrency === previous.caps.maxConcurrency)
+      return { ok: false, reason: "script_unchanged", executed: false };
     if (
       prepared.hash === previous.scriptHash &&
       input.max_concurrency === undefined &&
@@ -110,7 +117,9 @@ export async function amend(input, toolCallId, origin) {
     )
       return { ok: false, reason: "script_unchanged", executed: false };
     // 编译/确认失败不得中止前驱；成功后由相同 journal 导入缓存，不能伪装成重新 Create。
-    const decision = await this.options.confirm({
+    const preflight = preflightAmendImport(this.journal, runId);
+    if (!preflight.ok) return preflight;
+    const decision = control.fromSettings ? { approved: true } : await this.options.confirm({
       toolCallId,
       toolName: "AmendWorkflow",
       input: { ...input, script },
@@ -136,6 +145,11 @@ export async function amend(input, toolCallId, origin) {
     prepared.importedCache = imported.cache;
     prepared.resumedFrom = runId;
     const result = await this.launch(prepared, toolCallId, successor, origin);
+    if (result.ok && active) {
+      this.journal.updateRunStatus(runId, "stopped", { stopReason: "superseded" });
+      this.journal.appendEvent(runId, { type: "run-settled", status: "stopped", stopReason: "superseded" });
+      this.refresh();this.options.onState?.(this.state);
+    }
     return { ...result, supersedes: runId };
   } finally {
     this.amending.delete(runId);

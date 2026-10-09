@@ -246,6 +246,10 @@ export class BigModelCodingPlanSubscriptionProvider {
   async getDynamicWorkflowClientConfig(options?: {
     forceRefresh?: boolean;
   }): Promise<DynamicWorkflowClientConfig> {
+    // 社区底座随包提供工作流；原官方账号灰度不可隐藏本地已实现的配置/恢复入口。
+    if (process.env.STEP_BACKEND === "stepcode-local") {
+      return createDynamicWorkflowClientConfig("alwaysOn", "override");
+    }
     // 覆盖合法即短路：判据（normalize）与快照构造（resolve）都留在 shared，这里不复述取值域。
     if (normalizeDynamicWorkflowMode(process.env[ZCODE_DYNAMIC_WORKFLOW_MODE_ENV])) {
       return resolveDynamicWorkflowClientConfig({ remote: undefined, env: process.env });

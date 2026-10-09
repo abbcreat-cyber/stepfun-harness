@@ -14,12 +14,14 @@ import {
   NodeToolArtifactStore,
   savedWorkflows,
   buildImportedCache,
+  formatModelPickerValue,
 } from "./dependencies.mjs";
 import { createStepWorkflowDriver } from "./step-driver.mjs";
 import { readDesktopCredentialEnv } from "../credentials.mjs";
 import { hydrateActorTranscripts } from "./actor-transcript.mjs";
 import { evalSnippet, amend } from "./operations.mjs";
 import { WorkflowQuestions } from "./questions.mjs";
+import { resolveWorkflowModel, persistedWorkflowModel } from "./model-selection.mjs";
 
 export class StepWorkflowService extends WorkflowReadModel {
   constructor(options) {
@@ -47,16 +49,11 @@ export class StepWorkflowService extends WorkflowReadModel {
     return guide;
   }
   evalSnippet(input, toolCallId) { return evalSnippet.call(this, input, toolCallId); }
-  amend(input, toolCallId, origin) { return amend.call(this, input, toolCallId, origin); }
+  amend(input, toolCallId, origin, control) { return amend.call(this, input, toolCallId, origin, control); }
   resolveQuestion(input) { return this.questions.resolve(input.question_id, input.answer); }
 
   async prepare(input) {
-    const selectedModel = this.options.getModel?.() ?? this.options.model;
-    if (
-      input.subagent_model &&
-      input.subagent_model !== `${selectedModel.providerId}/${selectedModel.modelId}`
-    )
-      throw new Error("当前工作流子任务沿用父会话模型，请移除 subagent_model 或使用当前模型");
+    const selectedModel = await resolveWorkflowModel(this, input.subagent_model);
     let script = input.script;
     if (input.path !== undefined) input = { ...input, script_path: input.path };
     if (script !== undefined && input.script_path !== undefined) throw new Error("script 和 path 不能同时提供");
@@ -116,6 +113,7 @@ export class StepWorkflowService extends WorkflowReadModel {
     await writeFile(draftPath, script);
     return {
       ok: true,
+      model: selectedModel,
       script,
       hash,
       display,
@@ -193,7 +191,7 @@ export class StepWorkflowService extends WorkflowReadModel {
       run: (input) => execution.run({ ...input, signal: controller.signal }),
     };
     const fileSystemPort = createNodeFileSystemAdapter();
-    const model = this.options.getModel?.() ?? this.options.model;
+    const model = prepared.model ?? this.options.getModel?.() ?? this.options.model;
     const running = { controller, promise: undefined, control: undefined, superseded: false };
     let driver;
     const executionPromise = runWorkflowScript({
@@ -219,7 +217,7 @@ export class StepWorkflowService extends WorkflowReadModel {
         parentSessionId: this.options.sessionId,
         phaseNames: prepared.display.causalityGraph?.phases?.map((p) => p.name).filter(Boolean),
         scriptPath: prepared.draftPath,
-        subagentModel: `${model.providerId}/${model.modelId}`,
+        subagentModel: formatModelPickerValue(model),
       },
       makeDriver: (sink) =>
         (driver = createStepWorkflowDriver(
@@ -312,6 +310,7 @@ export class StepWorkflowService extends WorkflowReadModel {
       script: record.scriptText,
       name: record.name,
       max_concurrency: record.caps.maxConcurrency,
+      subagent_model: persistedWorkflowModel(this, runId),
     });
     if (!prepared.ok) return prepared;
     prepared.args = record.args ?? {};

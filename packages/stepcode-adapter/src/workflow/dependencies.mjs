@@ -13,6 +13,7 @@ export const { NodeToolArtifactStore } = await import("@zcode/adapters/storage")
 export const {
   createDynamicWorkflowSnippetService,
   buildImportedCache,
+  preflightAmendImport,
   executeWorldRead,
   executeArtifactPublish,
   artifactsOf,
@@ -22,3 +23,4 @@ export const {
   readWorkspaceNodeResultFrom,
 } = await import("@zcode/bootstrap/workflow-io");
 export const savedWorkflows = await import("@zcode/core/saved-workflows");
+export const { parseModelPickerValue, formatModelPickerValue } = await import("@zcode/shared/model-selection");

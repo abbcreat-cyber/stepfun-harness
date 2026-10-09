@@ -335,6 +335,10 @@ const methodHandlers = {
 				void service.resume(record.runId, record.toolCallId).then(result => ctx.finishWorkflowTool(envelope.sessionId,record.toolCallId,result),error => ctx.finishWorkflowTool(envelope.sessionId,record.toolCallId,{ok:false,error:error.message}));
 				return rememberAck(makeCommandAck({commandId, revisionAtDecision}));
 			}
+			case "amendWorkflowRunSettings": {
+				const { amendWorkflowSettings } = await import("../src/bridge/workflow-settings.mjs");
+				return rememberAck(await amendWorkflowSettings(ctx, { ...envelope, commandId }, revisionAtDecision));
+			}
 			case "cancelBackgroundWork": {
 				(await ctx.workflowBridge.service(envelope.sessionId)).cancel(envelope.payload.workId);
 				return rememberAck(makeCommandAck({commandId, revisionAtDecision}));

@@ -18,7 +18,16 @@ function boundedObjectJson(value) {
 export function registerProviderToolIntegrity(pi, isManaged, { maxRepairs = 1 } = {}) {
   let calls = new Map();
   let repairs = 0, blocked = new Set();
-  pi.on("before_agent_start", () => { repairs = 0; blocked = new Set(); });
+  let repairCalls = new Map();
+  pi.on("before_agent_start", () => { repairs = 0; blocked = new Set(); repairCalls = new Map(); });
+  pi.on("context", event => ({ messages: event.messages.map(message => {
+    const name = message.role === "toolResult" && repairCalls.get(message.toolCallId);
+    if (!name) return message;
+    // 原生 required 校验早于 tool_call；从工具结果上下文补充纠错原因，不能靠清空参数触发校验。
+    const content = Array.isArray(message.content) ? message.content : [{ type: "text", text: String(message.content ?? "") }];
+    return { ...message, isError: true, content: [...content, { type: "text", text:
+      `[desktop-tool-arguments-repair] ${name} 所在批次的工具均未执行：响应参数不是完整、满足必填字段的 JSON 对象。请根据原任务重新生成完整的结构化工具调用；不要只确认收到，不要声称已经执行。只允许纠正一次。` }] };
+  }) }));
   pi.on("tool_call", event => {
     if (blocked.has(event.toolCallId)) return { block: true, reason: "工具未执行：这一批调用包含不完整或无效的 JSON 参数。请重新生成整批正确的结构化工具调用，提供所有必填参数；不要输出 XML/tool_call 标签，也不要声称已执行。只允许纠正一次。" };
   });
@@ -72,8 +81,13 @@ export function registerProviderToolIntegrity(pi, isManaged, { maxRepairs = 1 } 
           throw new Error("Provider did not expose complete tool argument JSON");
         const args = entry.hasRaw ? JSON.parse(entry.raw) : entry.initial;
         boundedObjectJson(args);
+        const tools = pi.getAllTools?.();
+        const required = Array.isArray(tools) ? tools.find(tool => tool.name === block.name)?.parameters?.required : undefined;
+        if (Array.isArray(required) && required.some(name => !Object.hasOwn(args, name)))
+          throw new Error("Provider tool arguments are missing required fields");
         return { ...block, arguments: args };
       });
+      repairCalls = new Map();
       return { message: { ...message, content } };
     } catch {
       const toolCalls = message.content.filter(block => block.type === "toolCall");
@@ -82,7 +96,9 @@ export function registerProviderToolIntegrity(pi, isManaged, { maxRepairs = 1 } 
       if (repairs < maxRepairs && toolCalls.length && ![...calls.values()].some(entry => entry.invalid)) {
         repairs++;
         blocked = new Set(toolCalls.map(block => block.id));
-        return { message: { ...message, stopReason: "toolUse", content: message.content.map(block => block.type === "toolCall" ? { ...block, arguments: {} } : block) } };
+        repairCalls = new Map(toolCalls.map(block => [block.id, block.name]));
+        // 保留 SDK 已解析的参数作诊断；真实执行由整批 tool_call 拒绝，不伪造空参数。
+        return { message: { ...message, stopReason: "toolUse" } };
       }
       return {
         message: {
@@ -90,7 +106,7 @@ export function registerProviderToolIntegrity(pi, isManaged, { maxRepairs = 1 } 
           content: message.content.filter((block) => block.type !== "toolCall"),
           stopReason: "error",
           errorMessage:
-            "模型连续返回不完整或无效的工具参数，已停止本轮；这批工具未执行。请重试或切换模型。",
+            repairs > 0 ? "工具参数纠正后仍未通过校验，已停止本轮；这批工具未执行。请重试或切换模型。" : "工具参数不完整、无效或超出大小限制，已停止本轮；这批工具未执行。",
         },
       };
     } finally {

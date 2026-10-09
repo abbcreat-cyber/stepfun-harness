@@ -33,6 +33,6 @@ export async function readWorkflowGuide(section = "skill") {
           : content,
     version: "step-zcode-original-1",
     integration:
-      "以上编排规则来自原 ZCode 完整技能，仍用同一个编译器、引擎、调度器、journal 和 UI。当前子任务由 Step RPC 执行并沿用父会话模型；具体脚本须经原确认图批准。EvalWorkflowSnippet 使用原版片段沙箱，AmendWorkflow 复用原版缓存，ResolveWorkflowQuestion 回答当前运行的子代理问题。工具参数以当前提供的定义为准。不要把名册竖排或提高 max_concurrency 当作脚本并行；按原技能 §7 在 join 前发出独立 ask。",
+      "以上编排规则来自原 ZCode 完整技能，仍用同一个编译器、引擎、调度器、journal 和 UI。子任务由 Step RPC 执行，默认沿用父会话模型，也可通过 subagent_model 指定 provider/model$reasoningLevel；具体脚本须经原确认图批准，用户可在运行卡配置模型与并发上限。EvalWorkflowSnippet 使用原版片段沙箱，AmendWorkflow 复用原版缓存，ResolveWorkflowQuestion 回答当前运行的子代理问题。工具参数以当前提供的定义为准。不要把名册竖排或提高 max_concurrency 当作脚本并行；按原技能 §7 在 join 前发出独立 ask。",
   };
 }

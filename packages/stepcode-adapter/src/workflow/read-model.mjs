@@ -37,6 +37,16 @@ export class WorkflowReadModel {
       const full = this.journal.getRun(record.runId);
       const projected = this.state.runs.find((value) => value.runId === record.runId);
       if (projected) {
+        projected.concurrencyCeiling = 8;
+        // 原 bootstrap 会把 launch 元数据并入 run-started；直接调用引擎时需从同一 journal 补齐。
+        const launch = projected.subagentModel ? undefined
+          : this.journal.listEvents(record.runId).find(item => item.event.type === "run-launched")?.event;
+        if (launch?.subagentModel) projected.subagentModel = launch.subagentModel;
+        if (full?.resumedFrom) projected.resumedFrom = full.resumedFrom;
+        const limit = full?.caps?.maxConcurrency;
+        if (Number.isInteger(limit) && limit < 8) projected.concurrency = { cap: 8, ceiling: 8, limit };
+        else delete projected.concurrency;
+        if (full?.stopReason) projected.stopReason = full.stopReason;
         // 通用 reducer 保留已声明 actor 条目；Step 延迟建会话，派发后用账本补齐真实 ID。
         projected.actors = projected.actors.map((actor) => {
           const id = this.journal.getActor(record.runId, actor.siteId, actor.ordinal)?.sessionId;
@@ -49,6 +59,10 @@ export class WorkflowReadModel {
         const run = this.state.runs.find((value) => value.runId === record.runId);
         if (run) run.resultPreview = JSON.stringify(full.result ?? null).slice(0, 2000);
       }
+    }
+    for (const run of this.state.runs) {
+      const successor = this.state.runs.find(item => item.resumedFrom === run.runId);
+      if (successor) run.supersededBy = successor.runId;
     }
     return this.state;
   }
