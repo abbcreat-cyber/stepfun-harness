@@ -49,13 +49,13 @@ Research in parallel, consolidate an artifact, and ask another agent to review i
 
 ### Keep tasks within reach
 
-The Mini strip is a lightweight task entry point outside the main window. Mini voice features are not included.
+The Mini strip keeps active tasks, task counts, and execution status within reach outside the main window. Expand it to follow progress.
 
 <img src="docs/screenshots/mini.png" alt="Mini task strip" width="420" />
 
 ### Understand time and usage
 
-Inspect response speed and consumption. Screenshot numbers are from one demonstration, **not a benchmark or performance guarantee**.
+See session timing, response speed, token consumption, and cache usage to understand how each task runs.
 
 ![Session timing and token statistics](docs/screenshots/statistics.png)
 
@@ -83,19 +83,10 @@ See **[Get started](docs/GETTING-STARTED.md#english)** for data locations, sourc
 
 ## Plugins and hooks
 
-- **Eight third-party packages** are included: documents, PDF, presentations, spreadsheets, browser-use, Node Repl Host, skill-creator, and Android emulator. Android is off by default and requires an SDK/AVD. Node Repl Host is an execution dependency.
-- The adapter connects the browser and workflows; native Step capabilities remain owned by Step. A plugin directory does not prove external services or tools are ready.
+- Built-in plugins cover Word, PDF, presentations, spreadsheets, browser operations, and skill creation. Use `@plugin` to select the capabilities your task needs.
 - **First-principles reminder:** identify goals, facts, and constraints before deriving and verifying a solution.
-- **Opening explanation:** require visible prose before tools run. Missing prose defers tools once; another silent attempt stops the turn. Explicit output-only requests can be exempt.
-- UI and execution share hook configuration. Plugin status distinguishes declarations from loaded skills.
-
-## Current scope
-
-- Windows is the validated target. Inherited macOS/Linux code has not completed this project's release acceptance.
-- Bring your own account, subscription, or API key. No credentials or credits are included.
-- Images, tools, and reasoning vary by model. Protocol compatibility does not guarantee identical capabilities.
-- Screenshots show the maintainer's configured environment. Some UI labels still say `Step Code`.
-- Local tools run with the corresponding user's permissions. Begin with a test project and review permissions and cancellation.
+- **Opening explanation:** explain the goal and first step before using tools, making tasks easier to follow.
+- Both built-in hooks are enabled by default and can be toggled independently in settings.
 
 ## Architecture and contributions
 
@@ -107,14 +98,14 @@ Desktop UI → Host / Services → stepcode-adapter → Step Code RPC
 
 Our focus is connecting UI and execution faithfully: inputs, tools, interactions, events, cancellation, state, and artifacts. Reproducible reports and focused patches are welcome. Never include credentials or private conversations in issues.
 
-[Contributing](CONTRIBUTING.md) · [Release boundary](docs/PUBLISHING.md) · [Third-party notices](THIRD-PARTY-NOTICES.md)
+[Contributing](CONTRIBUTING.md) · [Build and release](docs/BUILDING.md) · [Third-party notices](THIRD-PARTY-NOTICES.md)
 
 ## Acknowledgments
 
 - **[ZCode](https://github.com/zai-org/ZCode)** — the desktop interface, engineering foundation, and upstream plugin/workflow capabilities.
 - **[Step Code](https://github.com/stepfun-ai/Step-Code)** — the actual agent runtime and RPC. Derived adapter files preserve its MIT notices.
 - **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** — inspiration for harness workflows and product capabilities.
-- **[Codex](https://openai.com/codex/)** — references for task interactions, Mini, and progress communication, plus development assistance. Similar UX does not imply copying proprietary implementations or official endorsement.
+- **[Codex](https://openai.com/codex/)** — references for task interactions, Mini, and progress communication, plus development assistance.
 
 Thank you for helping the community build more useful AI tools.
 
