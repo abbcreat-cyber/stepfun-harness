@@ -17,7 +17,7 @@ export function createV4Methods(ctx) {
 	 "workflows/get": async p => (await ctx.savedCatalog(p)).get(p),
 	 "workflows/updateMeta": async p => (await ctx.savedCatalog(p)).update(p),
 	 "workflows/delete": async p => (await ctx.savedCatalog(p)).delete(p),
-	 "v4/conversation/workflowRuns": async p => ({ runs: (await ctx.workflowBridge.service(p.sessionId)).list() }),
+	 "v4/conversation/workflowRuns": async p => ({ runs: await ctx.workflowBridge.listRuns(p.sessionId) }),
 	 "v4/conversation/workflowRunArtifacts": async p => (await ctx.workflowBridge.service(p.sessionId)).artifacts(p.runId),
 	 "v4/conversation/workflowRunArtifactData": async p => (await ctx.workflowBridge.service(p.sessionId)).artifactData(p),
 	 "v4/conversation/workflowRunArtifactRead": async p => (await ctx.workflowBridge.service(p.sessionId)).artifactRead(p),

@@ -16,6 +16,8 @@ import {
   type ReactNode,
 } from "react";
 import { Hand } from "lucide-react";
+import { ConversationDraftSendPreview } from "./ConversationDraftSendPreview.js";
+import { visibleDraftSendPreview, type DraftSendPreview } from "./composer/draftSendPreview.js";
 import {
   BUILTIN_MODEL_PROVIDER_IDS,
   buildCustomSupplierKey,
@@ -1039,6 +1041,13 @@ export function SessionPane({
   );
   const [dismissedErrorKeys, setDismissedErrorKeys] = useState<readonly string[]>([]);
   const [sendSubmissionError, setSendSubmissionError] = useState<ZCodeUiError | null>(null);
+  const [draftSendPreview, setDraftSendPreview] = useState<DraftSendPreview | null>(null);
+  const draftSendPreviewRef = useRef<DraftSendPreview | null>(null);
+  const draftSendPreviewToken = useRef(0);
+  const updateDraftSendPreview = useCallback((value: DraftSendPreview | null) => {
+    draftSendPreviewRef.current = value;
+    setDraftSendPreview(value);
+  }, []);
   const [paneLocalSummaryPanelVariantOverride, setPaneLocalSummaryPanelVariantOverride] =
     useState<ChatViewSummaryPanelVariant | null>(null);
   const [terminalSectionOpen, setTerminalSectionOpen] = useState(false);
@@ -1430,6 +1439,7 @@ export function SessionPane({
         ...(baseLogEpoch ? { baseLogEpoch } : {}),
       });
       onEnvelopeCreated?.(envelope);
+      const previewToken = submission ? draftSendPreviewRef.current?.token : undefined;
       // 必须早于第一次上行：transport error/renderer refresh 后仍有可查询线索。
       const groupedDraftTask =
         type === "createSession"
@@ -1509,6 +1519,12 @@ export function SessionPane({
       if (ack.status === "accepted") {
         acceptSelection?.();
         acceptRecent?.();
+        // 首发预览跟随真实 ACK 绑定；预热空 createSession 不能抢占用户输入预览。
+        const preview = draftSendPreviewRef.current;
+        if (preview && preview.token === previewToken && preview.workspaceKey === workspaceKey) {
+          updateDraftSendPreview({ ...preview, commandId: ack.commandId,
+            sessionId: targetSessionId ?? (ack.result?.type === "createSession" ? ack.result.sessionId : null) });
+        }
       }
       if (
         lease?.store &&
@@ -1595,6 +1611,8 @@ export function SessionPane({
       provider,
       sendCommand,
       sessionId,
+      updateDraftSendPreview,
+      workspaceKey,
       workspaceIdentity,
       workspacePath,
     ],
@@ -2289,7 +2307,7 @@ export function SessionPane({
   // ── 草稿态 v4 draft session 预热（m5）──
   // pane 未绑定会话时后台建 phase=draft 会话作预热载体：配置写 CAS 直达、首发复用。
   // 对外绑定语义不变（shell activeTaskId 仍 null），预热会话只是 pane 内部 effective 订阅目标。
-  const { binding: prewarmBinding } = useDraftSessionPrewarm({
+  const { binding: prewarmBinding, waitForBinding: waitForPrewarmBinding } = useDraftSessionPrewarm({
     enabled: sessionId === null && draftAgentStartupAllowed,
     workspaceKey,
     paneId,
@@ -2705,7 +2723,7 @@ export function SessionPane({
           );
           return;
         }
-        const prewarm = prewarmBindingRef.current;
+        const prewarm = prewarmBindingRef.current ?? await waitForPrewarmBinding();
         if (prewarm?.beginPromotion()) {
           try {
             const consumed = await dispatchSlashCommand(
@@ -2770,7 +2788,7 @@ export function SessionPane({
       if (!sessionId) {
         // 草稿附件在 composer 中已绑定预热 session 完成预传。
         // 这里只提交 ready ref，禁止在 send click 内再启动上传。
-        const prewarm = prewarmBindingRef.current;
+        const prewarm = prewarmBindingRef.current ?? await waitForPrewarmBinding();
         if (prewarm?.beginPromotion()) {
           try {
             const ack = await dispatchSubmissionCommand(
@@ -2946,6 +2964,7 @@ export function SessionPane({
       createSubmissionFromComposer,
       sessionId,
       settleCurrentQueueInputs,
+      waitForPrewarmBinding,
       workspaceIdentity,
       workspaceKey,
       workspacePath,
@@ -2998,6 +3017,15 @@ export function SessionPane({
       text: string,
       options?: ConversationComposerSendOptions,
     ): Promise<ConversationComposerSendResult> => {
+      // 冷启动只影响实际执行，不阻塞首发的会话布局；失败仍交给原 Composer 恢复草稿。
+      const previewToken = sessionId === null && !text.trimStart().startsWith("/")
+        ? ++draftSendPreviewToken.current : null;
+      if (previewToken !== null) updateDraftSendPreview({ token: previewToken, workspaceKey,
+        generation: draftRuntimeInvalidationVersion, text, attachmentCount: options?.attachments?.length ?? 0,
+        sessionId: null, commandId: null });
+      const clearPreview = () => {
+        if (draftSendPreviewRef.current?.token === previewToken) updateDraftSendPreview(null);
+      };
       // 发送前冻结本次 admission 预期：command ACK 回来时 projection 可能已经切到 running，
       // 不能用更新后的 enqueue mode 反推刚提交的 prompt 是否原本立即发送。
       const shouldFocusLatest = shouldFocusTimelineAfterComposerSend({
@@ -3008,6 +3036,7 @@ export function SessionPane({
       try {
         const sendResult = await dispatchSendText(text, options);
         if (sendResult === "blocked" || sendResult === "confirmationRequired") {
+          clearPreview();
           return sendResult;
         }
         setSendSubmissionError(null);
@@ -3016,6 +3045,7 @@ export function SessionPane({
         }
         return "sent";
       } catch (error) {
+        clearPreview();
         const detail = error instanceof Error ? error.message : String(error);
         const runtimeModelUnavailable = detail.includes("provider.notInRegistry");
         // 首发前 switchModelConfig 失败只会抛回 Composer；Composer 为了保留草稿
@@ -3033,7 +3063,7 @@ export function SessionPane({
         throw error;
       }
     },
-    [dispatchSendText, focusTimelineToLatest, intl, sessionId],
+    [dispatchSendText, focusTimelineToLatest, intl, sessionId, workspaceKey, draftRuntimeInvalidationVersion, updateDraftSendPreview],
   );
 
   const handleComposerDraftStateChange = useCallback(
@@ -3734,6 +3764,12 @@ export function SessionPane({
     !isDraft && (lease === null || sessionLeaseReady) && snapshot?.sessionId === sessionId
       ? snapshot
       : null;
+  const pendingDraftPreview = visibleDraftSendPreview(draftSendPreview, workspaceKey,
+    draftRuntimeInvalidationVersion, sessionId, timelineSnapshot);
+  useEffect(() => {
+    if (draftSendPreview && !pendingDraftPreview) updateDraftSendPreview(null);
+  }, [draftSendPreview, pendingDraftPreview, updateDraftSendPreview]);
+  const showDraftWelcome = isDraft && !pendingDraftPreview;
   const shareHandoverContext =
     snapshot?.sharedContextImport && "contextId" in snapshot.sharedContextImport
       ? snapshot.sharedContextImport
@@ -4413,8 +4449,8 @@ export function SessionPane({
       submissionReady={composerSubmissionReady}
       updateComposerContent={updateComposerContent}
       createSubmissionFromComposer={createSubmissionFromComposer}
-      contextHeader={isDraft ? draftComposerHeader : undefined}
-      centered={isDraft}
+      contextHeader={showDraftWelcome ? draftComposerHeader : undefined}
+      centered={showDraftWelcome}
       blockingRequestId={blockingInteractionId}
       listenAddToChatEvents={focused}
       externalTextInsertRequest={focused && sessionId === null ? composerTextInsertRequest : null}
@@ -4608,7 +4644,7 @@ export function SessionPane({
       ) : null}
       {composerNode}
       {/* 办公模式显示主动任务推荐；编程模式保留原有小型场景入口。 */}
-      {isDraft && (!isOfficeMode || sharedSettings?.proactiveSuggestionsEnabled === true) ? (
+      {showDraftWelcome && (!isOfficeMode || sharedSettings?.proactiveSuggestionsEnabled === true) ? (
         <ConversationDraftSuggestedPromptsContainer
           className={isOfficeMode ? "mt-4" : "mt-6"}
           proactive={isOfficeMode}
@@ -4819,7 +4855,7 @@ export function SessionPane({
               headerSlot={
                 // unsupportedRowCount 也要开这个门：整份副本的行都被本 build 跳过时
                 // rows 为空，但只读块必须留下来显示「需要更新 ZCode」，不能整块消失。
-                importedShare &&
+                pendingDraftPreview ? <ConversationDraftSendPreview preview={pendingDraftPreview} workspacePath={workspacePath} workspaceIdentity={workspaceIdentity} /> : importedShare &&
                 (importedShare.rows.length > 0 || importedShare.unsupportedRowCount > 0) ? (
                   <ConversationShareImportNotice
                     rows={importedShare.rows}
@@ -4839,13 +4875,13 @@ export function SessionPane({
                 ) : null
               }
               emptyState={
-                isDraft ? (
+                showDraftWelcome ? (
                   <div data-testid={TID_CHAT_EMPTY} className="w-full">
                     <ConversationDraftEmptyState />
                   </div>
                 ) : null
               }
-              centerEmptyStateWithDock={isDraft}
+              centerEmptyStateWithDock={showDraftWelcome}
               summaryPanelLayout={statusPanelLayout}
               conversationFindQuery={!isDraft && focused ? conversationFindQuery : ""}
               conversationFindActiveIndex={!isDraft && focused ? conversationFindActiveIndex : -1}

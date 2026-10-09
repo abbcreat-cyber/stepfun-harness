@@ -320,6 +320,15 @@ export function createWorkflowBridge(options) {
       await instance.recover();
       states.set(sessionId, instance.refresh());
     },
+    async listRuns(sessionId) {
+      if (!sessionId) throw new Error("工作流缺少会话标识");
+      // 普通聊天的目录查询不能加载执行编译器或创建空数据库，避免首帧被同步模块初始化阻塞。
+      if (!services.has(sessionId)) {
+        try { await access(join(options.root, "workflows", encodeURIComponent(sessionId), "workflow-runs.sqlite")); }
+        catch (error) { if (error.code === "ENOENT") return []; throw error; }
+      }
+      return (await service(sessionId)).list();
+    },
     snapshot(sessionId) {
       const backgroundWorks = (states.get(sessionId)?.runs ?? [])
         .filter((run) => ["running", "pending"].includes(run.status))

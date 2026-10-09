@@ -1337,9 +1337,9 @@ function ConversationComposerImpl({
           }
         }
         claimSubmittedDraft();
-        if (requestedDelivery === "startNow") {
-          // 原子抢占需要等旧 turn 退出并提交新 TurnStarted ACK；
-          // 若编辑器也等整条链路才清空，用户会误以为快捷键未生效。
+        if (requestedDelivery === "startNow" || (draftMode && !trimmed.startsWith("/"))) {
+          // 原子抢占与普通首发都要等待实际准入；首发已有明确 pending 消息预览，
+          // 编辑器无需继续占着同一份正文。失败仍用冻结 editor state 原样恢复。
           // 先清空可见正文；命令拒绝时用冻结 editor state 原样恢复。
           inputApiRef.current?.clear();
           updateText("");

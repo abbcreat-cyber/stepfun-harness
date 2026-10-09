@@ -24,6 +24,7 @@ import { log } from "./logging.mjs";
 import { BridgeError } from "./errors.mjs";
 import { testProviderConnectivity } from "./provider-connectivity.mjs";
 import { resolveSessionWorkspace } from "./model-admission.mjs";
+import { initializeCreatedSession } from "../initial-session.mjs";
 
 /** @param {any} ctx 共享桥接状态（ledger/primarySession/client/issuedCommandAcks 等） */
 export function createSessionMethods(ctx) {
@@ -99,7 +100,7 @@ export function createSessionMethods(ctx) {
 			const sessionId = typeof params?.sessionId === "string" && params.sessionId ? params.sessionId : nextId("step-session");
 			const workspace = await resolveSessionWorkspace(ctx, { workspace: params?.workspace });
 			return ctx.runWithPreparedClient({ selection: null, requireIdle: true, reset: true, sessionId, workspace }, async client => {
-			await client.newSession();
+			await initializeCreatedSession(client, ctx.spawnCommand);
 			// P0-04：firstInput/config 显式携带的模型选择失败必须如实报错（显式配置动作
 			// 不吞错——ACK 不得在模型未生效时谎报建会话成功）；无显式选择时的默认兜底
 			// 保持启动韧性（best-effort 继续，get_state 回读修正为实际生效值）。

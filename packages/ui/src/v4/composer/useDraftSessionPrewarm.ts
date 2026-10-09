@@ -11,7 +11,7 @@
 //
 // 结构：生命周期收敛在纯控制器 startDraftSessionPrewarm（可单测，无 React 依赖），
 // useDraftSessionPrewarm 只做 effect 接线与 owner-scoped binding 暴露。
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import type { CommandAck, CommandType, SessionConfigState } from "@zcode/shared/zcode-protocol-v4";
 import { logger } from "@/logger.js";
 
@@ -148,6 +148,7 @@ function startDraftSessionPrewarm(params: {
 interface DraftSessionPrewarm {
   /** 当前 workspace/transport generation 已就绪的预热 binding。 */
   binding: DraftPrewarmBinding | null;
+  waitForBinding(): Promise<DraftPrewarmBinding | null>;
 }
 
 interface DraftPrewarmBinding {
@@ -171,6 +172,7 @@ interface DraftPrewarmCurrent {
   controller: DraftPrewarmController;
   binding: DraftPrewarmBinding | null;
   settled: boolean;
+  settledPromise: Promise<void>;
   retiring: boolean;
   /** 本代是第几次退避重试的产物；0 表示首发。 */
   retryAttempt: number;
@@ -193,7 +195,7 @@ const PREWARM_RETRY_DELAYS_MS = [500, 1000, 2000];
  * 发出的协议请求，新 effect 却会立刻再发一个 createSession；Agent 的全局 FIFO 因而被同一草稿
  * 的多个慢创建占满。协调器跨同步重挂保留 owner，并在旧创建 ACK 前阻止下一代创建入队。
  */
-class DraftSessionPrewarmCoordinator {
+export class DraftSessionPrewarmCoordinator {
   private readonly subscribers = new Map<symbol, DraftPrewarmSubscriber>();
   private current: DraftPrewarmCurrent | null = null;
   private blockedInvalidationVersion: number | null = null;
@@ -218,6 +220,15 @@ class DraftSessionPrewarmCoordinator {
   ): void {
     this.dispatchCommand = dispatchCommand;
     this.resolveInitialConfig = resolveInitialConfig;
+  }
+
+  async waitForBinding(invalidationVersion: number): Promise<DraftPrewarmBinding | null> {
+    const current = this.current;
+    if (!current || current.retiring || current.invalidationVersion !== invalidationVersion) return null;
+    // 点击时预热尚未完成，也复用同一创建；不并发另启一个完整 SDK。
+    await current.settledPromise;
+    return this.current === current && !current.retiring &&
+      current.invalidationVersion === this.requestedInvalidationVersion() ? current.binding : null;
   }
 
   acquire(params: {
@@ -318,6 +329,8 @@ class DraftSessionPrewarmCoordinator {
 
   private startCurrent(invalidationVersion: number, retryAttempt = 0): void {
     let current!: DraftPrewarmCurrent;
+    let resolveSettled!: () => void;
+    const settledPromise = new Promise<void>(resolve => { resolveSettled = resolve; });
     const controller = startDraftSessionPrewarm({
       workspaceKey: this.workspaceKey,
       dispatchCommand: (type, payload, targetSessionId) =>
@@ -359,6 +372,7 @@ class DraftSessionPrewarmCoordinator {
       },
       onSettled: () => {
         current.settled = true;
+        resolveSettled();
         if (this.current !== current || !current.retiring) {
           // 未被 retire 却没拿到 binding = createSession 失败；瞬态回收可退避重试。
           if (this.current === current && !current.retiring && current.binding === null) {
@@ -379,6 +393,7 @@ class DraftSessionPrewarmCoordinator {
       controller,
       binding: null,
       settled: false,
+      settledPromise,
       retiring: false,
       retryAttempt,
     };
@@ -523,5 +538,14 @@ export function useDraftSessionPrewarm(params: {
     });
   }, [coordinator, enabled, generation, invalidationVersion]);
 
-  return { binding: ready?.generation === generation ? ready.binding : null };
+  const waitForBinding = useCallback(
+    // provider readiness 可在本次发送的 await 中由 false 变 true；以 owner 当前状态裁决，
+    // 不用点击时闭包里的 enabled 丢弃刚启动的预热。无订阅/已退休的代由 coordinator 拒绝。
+    () => coordinator.waitForBinding(invalidationVersion),
+    [coordinator, invalidationVersion],
+  );
+  return {
+    binding: ready?.generation === generation ? ready.binding : null,
+    waitForBinding,
+  };
 }
