@@ -1,7 +1,6 @@
 /* eslint-disable max-lines -- 聚合命令、任务、文件三类搜索结果，后续可按 result section 拆分。 */
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { unpackWorkspaceFileEntries } from "@zcode/shared/workspaceFileEntriesCodec";
-import { fetchWorkspaceFileEntriesPacked } from "@/workspace-file-search/fetchWorkspaceFileEntries.js";
+import { useWorkspaceFileQuery } from "@/hooks/useWorkspaceFileQuery.js";
 import { Command as CommandPrimitive } from "cmdk";
 import {
   ChevronDownIcon,
@@ -26,7 +25,6 @@ import {
 import { cn } from "@/components/lib/utils.js";
 import { toast } from "@/components/ui/toast.js";
 import { useGlobalTaskList } from "@/hooks/useGlobalTaskList.js";
-import { useServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { FileDisplayIcon, resolveFileDisplayDescriptor } from "@/lib/fileDisplay.js";
 import { formatTaskRelativeTime } from "@/lib/taskListItemPresentation.js";
@@ -427,7 +425,6 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   ) => void;
   onOpenCodeViewer: (source: CodeViewerSource) => void;
 }) {
-  const { fileService } = useServices();
   const { intl } = useZCodeIntl();
   const workspaceKey = workspaceIdentity?.trim() || workspaceAbsPath;
   const [rawQuery, setRawQuery] = useState("");
@@ -437,10 +434,6 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   );
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [historyEntries, setHistoryEntries] = useState<CommandCenterSearchHistoryEntry[]>([]);
-  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileEntry[]>([]);
-  const [workspaceFilesLoading, setWorkspaceFilesLoading] = useState(false);
-  const [workspaceFilesError, setWorkspaceFilesError] = useState<string | null>(null);
-  const [loadedWorkspaceKey, setLoadedWorkspaceKey] = useState<string | null>(null);
   // 性能修复：Command Center 关闭时不需要跟随 chat streaming 重算命令、任务和 recent changes。
   // 保留 hooks 顺序，但把关闭态输入降为空，避免隐藏弹窗在每个 token 批次重建结果区。
   const effectiveCommands = open ? commands : EMPTY_QUICK_PICK_COMMANDS;
@@ -453,6 +446,9 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   const searchConversations =
     open && hasSearchQuery && (activeScope === "all" || activeScope === "conversations");
   const searchFiles = open && hasSearchQuery && (activeScope === "all" || activeScope === "files");
+  const { entries: workspaceFiles, loading: workspaceFilesLoading, error: fileSearchError } =
+    useWorkspaceFileQuery(workspaceAbsPath, workspaceIdentity, searchQuery, searchFiles, COMMAND_CENTER_FILE_RESULT_LIMIT);
+  const workspaceFilesError = fileSearchError?.message ?? null;
   const searchWorkspaceTabs = useMemo(
     () => (searchConversations ? effectiveWorkspaceTabs : []),
     [effectiveWorkspaceTabs, searchConversations],
@@ -554,48 +550,6 @@ export const CommandCenterDialog = memo(function CommandCenterDialogComponent({
   useEffect(() => {
     setExpandedSections(new Set());
   }, [activeScope, searchQuery]);
-
-  useEffect(() => {
-    setWorkspaceFiles([]);
-    setWorkspaceFilesError(null);
-    setWorkspaceFilesLoading(false);
-    setLoadedWorkspaceKey(null);
-  }, [workspaceKey]);
-
-  useEffect(() => {
-    if (!searchFiles || loadedWorkspaceKey === workspaceKey) {
-      return;
-    }
-
-    let cancelled = false;
-    setWorkspaceFilesLoading(true);
-    setWorkspaceFilesError(null);
-    void fetchWorkspaceFileEntriesPacked(fileService, workspaceAbsPath)
-      .then((result) => {
-        // Host 返回列式 packed 字符串（避免大数组结构化克隆），此处一次性解包。
-        const entries = unpackWorkspaceFileEntries(result, workspaceAbsPath);
-        if (cancelled) {
-          return;
-        }
-
-        setWorkspaceFiles(entries);
-        setLoadedWorkspaceKey(workspaceKey);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setWorkspaceFilesError(String(error));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setWorkspaceFilesLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fileService, loadedWorkspaceKey, searchFiles, workspaceAbsPath, workspaceKey]);
 
   const rememberSearch = useCallback(
     (scope: CommandCenterSearchScope = activeScope) => {
