@@ -329,6 +329,8 @@ const methodHandlers = {
 			}
 			case "startSavedWorkflow": {
 				if (envelope.sessionId !== ctx.primarySession?.sessionId) await ctx.restoreSession(envelope.sessionId);
+				// 已保存模板没有普通 prompt 的模型准入；必须在创建运行卡前复核选型。
+				await ctx.applyModelSelection(ctx.primarySession.modelSelection);
 				const service = await ctx.workflowBridge.service(envelope.sessionId);
 				const input = {saved:{name:envelope.payload.name,args:envelope.payload.args,scope:envelope.payload.scope}};
 				const prepared = await service.prepare(input);
@@ -536,7 +538,7 @@ attachJsonlLineReader(process.stdin, (line) => {
 		if (frame.id !== undefined) {
 			// 准入/队列变更同链串行，避免取消 ACK 后已经选中的队首继续执行。
 			// 交互回答与 Host 回执保持独立，否则等待权限的任务会死锁。
-			const serializedTypes = new Set(["editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback", "createSession", "sendText", "compact", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
+			const serializedTypes = new Set(["startSavedWorkflow", "editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback", "createSession", "sendText", "compact", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
 			if ((frame.method === "v4/command" && serializedTypes.has(frame.params?.type)) || ["session/create", "session/send", "session/stop", "session/setModel", "session/setThoughtLevel"].includes(frame.method)) {
 				void ctx.runInputOperation(() => handleRequestLine(frame));
 			} else void handleRequestLine(frame);

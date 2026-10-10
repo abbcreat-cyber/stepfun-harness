@@ -16,6 +16,9 @@ import {
   type WorkspaceConnectionAgentService,
 } from "@/v4/workspaceConnectionRegistry.js";
 import { logger } from "@/logger.js";
+import type { IModelSelectionService } from "@zcode/services";
+import { readComposerRecent } from "@/lib/composerRecent.js";
+import { resolveSavedWorkflowLaunchSelection } from "./savedWorkflowLaunchSelection.js";
 
 /** 目标项目坐标（工作流所属项目，绝不取活动项目；不变式 7）；remoteSessionId 决定连接 endpoint。 */
 export interface SavedWorkflowLaunchTarget {
@@ -110,9 +113,10 @@ function mapLaunchError(ack: CommandAck): SavedWorkflowLaunchError {
  */
 export function useSavedWorkflowLauncher(params: {
   agentService: WorkspaceConnectionAgentService;
+  modelSelectionService: IModelSelectionService;
   onNavigate?: (target: SavedWorkflowLaunchTarget, sessionId: string) => void;
 }): UseSavedWorkflowLauncherResult {
-  const { agentService, onNavigate } = params;
+  const { agentService, modelSelectionService, onNavigate } = params;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<SavedWorkflowLaunchError | null>(null);
   // pending 的同步事实源：防同一帧内重复触发（setPending 异步，单靠 state 挡不住）。
@@ -154,11 +158,17 @@ export function useSavedWorkflowLauncher(params: {
 
       let createdSessionId: string | null = null;
       try {
-        // ① 空会话：无 firstInput、无 config，用 runtime 缺省模型 / 模式（不复用 composer 草稿配置）。
+        // 无显式模型会落到桥接硬编码默认值，自定义供应商下必然启动失败。
+        // 只读取目标工作区已接受的模型意图，不携带 composer 的未提交正文。
+        const modelSelection = await resolveSavedWorkflowLaunchSelection(
+          modelSelectionService,
+          readComposerRecent(target.workspacePath, target.workspaceIdentity)?.modelSelection,
+        );
+        // ① 空会话携带经过目标 Host 校验的模型，权限仍沿用原默认值。
         const createAck = await lease.transport.sendCommand(
           createCommandEnvelope({
             type: "createSession",
-            payload: { workspaceId },
+            payload: { workspaceId, config: { modelSelection } },
             sessionId: null,
           }),
         );
@@ -221,7 +231,7 @@ export function useSavedWorkflowLauncher(params: {
         setPending(false);
       }
     },
-    [agentService, onNavigate],
+    [agentService, modelSelectionService, onNavigate],
   );
 
   return { launch, pending, error, clearError };

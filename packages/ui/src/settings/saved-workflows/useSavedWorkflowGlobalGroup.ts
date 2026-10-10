@@ -66,7 +66,7 @@ export function useSavedWorkflowGlobalGroup({
 }: UseSavedWorkflowGlobalGroupParams) {
   const { intl, locale } = useZCodeIntl();
   const requestConfirmation = useConfirmDialog();
-  const { zcodeAgentService: agentService, fileWatcherService } = useServices();
+  const { zcodeAgentService: agentService, fileWatcherService, modelSelectionService } = useServices();
 
   const state = useSavedWorkflowStore((store) =>
     selectSavedWorkflowState(store, GLOBAL_SAVED_WORKFLOW_TARGET),
@@ -123,6 +123,7 @@ export function useSavedWorkflowGlobalGroup({
   // GUI 直接启动器：全局档载体 = 本机 base agent service，目标 = 「运行于」选中的本地项目。
   const launcher = useSavedWorkflowLauncher({
     agentService,
+    modelSelectionService,
     onNavigate: onNavigateToLaunchedRun,
   });
 

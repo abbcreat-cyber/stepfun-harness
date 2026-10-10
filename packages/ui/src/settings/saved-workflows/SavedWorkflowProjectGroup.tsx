@@ -155,6 +155,7 @@ export function SavedWorkflowProjectGroup({
   // GUI 直接启动器：载体 = 本项目解析出的 agent service；accepted 后切到新会话。
   const launcher = useSavedWorkflowLauncher({
     agentService,
+    modelSelectionService: services.modelSelectionService,
     onNavigate: onNavigateToLaunchedRun,
   });
 
