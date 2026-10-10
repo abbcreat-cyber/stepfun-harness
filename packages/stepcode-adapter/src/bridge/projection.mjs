@@ -67,8 +67,11 @@ export function createProjection(ctx) {
 		const topic = targetTopic ?? `conversation/${ctx.primarySession.sessionId}`;
 		const subscriptionId = targetSubscriptionId ?? ctx.v4Subscriptions.get(topic);
 		if (!subscriptionId) return;
-		if (ctx.primarySession && topic === `conversation/${ctx.primarySession.sessionId}`) persistSnapshot();
-		const saved = ctx.readConversation(topic.slice("conversation/".length));
+		const isPrimary = ctx.primarySession && topic === `conversation/${ctx.primarySession.sessionId}`;
+		if (isPrimary) persistSnapshot();
+		// 活动非只读会话的正文/统计/队列由内存owner提供；刚保存的JSON回读结果没有消费者。
+		// 冷历史及只读会话仍要读取磁盘，尤其保留其统计和队列恢复来源。
+		const saved = isPrimary && !ctx.primarySession.readOnly ? null : ctx.readConversation(topic.slice("conversation/".length));
 		const rowsForFrame = ctx.primarySession && topic === `conversation/${ctx.primarySession.sessionId}` ? ctx.conversationRows : (saved?.rows ?? []);
 		const terminalState = rowsForFrame.filter(row => row.kind === "turnHeader").at(-1)?.state;
 		const terminalPhase = terminalState === "failed" ? "error" : terminalState === "completedInterrupted" ? "completedInterrupted" : rowsForFrame.length ? "completedSuccess" : "draft";

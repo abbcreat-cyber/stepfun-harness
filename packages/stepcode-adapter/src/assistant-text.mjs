@@ -1,10 +1,16 @@
 /** 去掉模型在正文中重复泄漏的工具协议。代码示例保留，普通错误说明保留。 */
 export function visibleAssistantText(text, { streaming = false, strip = true } = {}) {
   if (!strip) return text;
+  const marker = "<tool_call>";
+  // 普通正文不需要逐字重建。只有完整标记或流式末尾的未完标记才进入原解析器；
+  // 代码块内的标记仍由原规则判断，不能用正则替换破坏示例。
+  if (typeof text === "string" && !text.includes(marker)) {
+    const tail = streaming ? text.lastIndexOf("<") : -1;
+    if (tail < 0 || !marker.startsWith(text.slice(tail))) return text;
+  }
   let output = "",
     i = 0,
     code = null;
-  const marker = "<tool_call>";
   while (i < text.length) {
     if (text.startsWith("```", i)) {
       code = code === "```" ? null : (code ?? "```");

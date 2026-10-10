@@ -3,6 +3,20 @@ import assert from "node:assert/strict";
 import { visibleAssistantText, visibleConversationRows } from "../src/assistant-text.mjs";
 import { StepStreamProjection } from "../src/stream-projection.mjs";
 import { withDefaultLanguage } from "../src/default-language.mjs";
+
+test("ordinary prose and HTML remain literal, split markers keep the existing code rules", () => {
+  for (const text of ["普通正文".repeat(10000), "比较 x < y，再写 <div>HTML</div>", "`示例`和```代码```", "结束</tool_call>"])
+    for (const streaming of [true,false]) assert.equal(visibleAssistantText(text,{streaming}),text);
+  const marker="<tool_call>";
+  for(let end=1;end<marker.length;end++){
+    const partial=marker.slice(0,end);
+    assert.equal(visibleAssistantText("正文"+partial,{streaming:true}),"正文");
+    assert.equal(visibleAssistantText("正文"+partial),"正文"+partial);
+    assert.equal(visibleAssistantText("`"+partial,{streaming:true}),"`"+partial);
+    assert.equal(visibleAssistantText("```\n"+partial,{streaming:true}),"```\n"+partial);
+  }
+  assert.equal(visibleAssistantText("<tool_call>raw</tool_call>",{strip:false}),"<tool_call>raw</tool_call>");
+});
 test("tool protocol fragments never leak while ordinary prose and code examples remain", () => {
   const raw =
     "先检查文件。<tool_call><function=read_file><parameter=path>D:/test</tool_call>已读完。";
