@@ -58,6 +58,7 @@ interface PreviewPaneContentProps {
   theme?: Theme;
   workspacePath?: string;
   onOpenBrowserUrl?: (url: string) => void;
+  onOpenCodeViewer?: (source: CodeViewerSource) => void;
   markdownSelectionTarget?: MarkdownSelectionTarget;
   markdownViewMode: "preview" | "code";
   svgViewMode: "preview" | "code";
@@ -118,6 +119,7 @@ export function PreviewPaneContent({
   theme,
   workspacePath,
   onOpenBrowserUrl,
+  onOpenCodeViewer,
   markdownSelectionTarget,
   markdownViewMode,
   svgViewMode,
@@ -207,6 +209,9 @@ export function PreviewPaneContent({
           sourcePath={source.path}
           content={source.content}
           workspacePath={workspacePath}
+          workspaceIdentity={source.workspaceIdentity}
+          workspaceRemoteSessionId={source.workspaceRemoteSessionId}
+          onOpenCodeViewer={onOpenCodeViewer}
           theme={theme}
           codePreviewSettings={codePreviewSettings}
           onOpenBrowserUrl={onOpenBrowserUrl}
@@ -419,6 +424,11 @@ export function PreviewPaneContent({
         sourcePath={source.path}
         content={filePreview.content}
         workspacePath={workspacePath}
+        workspaceIdentity={source.workspaceIdentity}
+        workspaceRemoteSessionId={source.workspaceRemoteSessionId}
+        onOpenCodeViewer={onOpenCodeViewer}
+        theme={theme}
+        codePreviewSettings={codePreviewSettings}
         onOpenBrowserUrl={onOpenBrowserUrl}
       />
     );

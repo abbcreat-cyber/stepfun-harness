@@ -9,6 +9,7 @@
 import { Button } from "../ui/button.js";
 import { ButtonGroup, ButtonGroupText } from "../ui/button-group.js";
 import { cn } from "../lib/utils.js";
+import { markdownDocumentLinksRemarkPlugin } from "@/lib/markdownDocumentLinks.js";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { createMathPlugin } from "@streamdown/math";
@@ -360,6 +361,8 @@ export type MessageResponseProps = {
   dir?: "auto" | "ltr" | "rtl";
   streaming?: boolean;
   streamingAnimationKey?: string;
+  /** 本地 Markdown 文件的源路径；聊天消息不设置，维持原工作区相对规则。 */
+  documentPath?: string;
   workspacePath?: string;
   workspaceHomePath?: string;
   workspaceIdentity?: string;
@@ -1302,6 +1305,7 @@ export const messageResponsePropsAreEqual = (
   nextProps.streaming === prevProps.streaming &&
   nextProps.streamingAnimationKey === prevProps.streamingAnimationKey &&
   nextProps.workspacePath === prevProps.workspacePath &&
+  nextProps.documentPath === prevProps.documentPath &&
   nextProps.workspaceHomePath === prevProps.workspaceHomePath &&
   nextProps.workspaceIdentity === prevProps.workspaceIdentity &&
   nextProps.workspaceRemoteSessionId === prevProps.workspaceRemoteSessionId &&
@@ -1323,6 +1327,7 @@ export const MessageResponse = memo(
     onOpenFileLink,
     onOpenExternalUrl,
     renderZCodeFileCitations = false,
+    documentPath,
     workspacePath,
     workspaceHomePath,
     workspaceIdentity,
@@ -1361,11 +1366,14 @@ export const MessageResponse = memo(
         // Windows 绝对路径链接里的 `\.` 会在 remark 解析期被当成标点转义吃掉
         // rehype 阶段已经看不到原文。这条还原必须无条件生效，不能挂在 citation 开关下。
         windowsFileLinkEscapeRemarkPlugin,
+        ...(documentPath && workspacePath
+          ? [[markdownDocumentLinksRemarkPlugin, { workspacePath, documentPath }] satisfies Pluggable]
+          : []),
         ...(renderZCodeFileCitations && workspacePath
           ? [createZCodeFileCitationRemarkPlugin(workspacePath, workspaceHomePath)]
           : []),
       ],
-      [renderZCodeFileCitations, workspaceHomePath, workspacePath],
+      [renderZCodeFileCitations, workspaceHomePath, workspacePath, documentPath],
     );
     const responseClassName = cn(
       "size-full text-ui-base leading-[1.75] tracking-wide [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
@@ -1412,7 +1420,7 @@ export const MessageResponse = memo(
           workspaceIdentity,
           workspaceRemoteSessionId,
           wrapLongLines,
-        }) + (forceCodeWrap ? ":wrap-locked" : "")
+        }) + (forceCodeWrap ? ":wrap-locked" : "") + `:document:${documentPath ?? ""}`
       );
     }, [
       codeBlockTheme,
@@ -1426,6 +1434,7 @@ export const MessageResponse = memo(
       workspacePath,
       workspaceIdentity,
       workspaceRemoteSessionId,
+      documentPath,
     ]);
     const messageComponents = useMemo(
       () => ({

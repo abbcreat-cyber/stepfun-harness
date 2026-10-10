@@ -1788,6 +1788,7 @@ export function PreviewPane({
             theme={theme}
             workspacePath={sourceWorkspacePath}
             onOpenBrowserUrl={onOpenBrowserUrl}
+            onOpenCodeViewer={onOpenCodeViewer}
             markdownSelectionTarget={
               markdownSelectionTarget &&
               (source.workspaceIdentity?.trim() || sourceWorkspacePath) ===
