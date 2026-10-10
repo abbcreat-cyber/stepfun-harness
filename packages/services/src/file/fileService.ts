@@ -216,6 +216,25 @@ interface WorkspaceFileIndex {
   candidates?: ReturnType<typeof buildHostFileSearchCandidates>;
 }
 
+async function filterCurrentSearchEntries(entries: WorkspaceFileEntry[]): Promise<WorkspaceFileEntry[]> {
+  const current: WorkspaceFileEntry[] = [];
+  // 只核对已匹配的有界候选，不重扫整个工作区；保持顺序且限制 IO 并发。
+  for (let offset = 0; offset < entries.length; offset += WORKSPACE_FILE_LIST_SCAN_CONCURRENCY) {
+    const batch = entries.slice(offset, offset + WORKSPACE_FILE_LIST_SCAN_CONCURRENCY);
+    const valid = await Promise.all(batch.map(async entry => {
+      try {
+        const info = await stat(entry.path);
+        return entry.type === "directory" ? info.isDirectory() : info.isFile();
+      } catch (error) {
+        if (isSkippableWorkspaceFileListError(error) || (error as NodeJS.ErrnoException).code === "ENOTDIR") return false;
+        throw error;
+      }
+    }));
+    for (const [index, entry] of batch.entries()) if (valid[index]) current.push(entry);
+  }
+  return current;
+}
+
 async function statWorkspaceFileSearchIgnoreFingerprint(rootPath: string): Promise<string> {
   try {
     const fileStat = await stat(join(rootPath, WORKSPACE_FILE_SEARCH_IGNORE_FILE_NAME));
@@ -602,7 +621,14 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
         params.refresh,
       );
       index.candidates ??= buildHostFileSearchCandidates(index.packed, params.rootPath);
-      return searchHostFileCandidates(await index.candidates, params.query, limit);
+      const matches = await searchHostFileCandidates(await index.candidates, params.query, limit);
+      const current = await filterCurrentSearchEntries(matches);
+      if (current.length === matches.length) return current;
+      // 有命中的旧路径不会触发 UI 的无结果补扫；重命名/删除后必须在 Host
+      // 淘汰过期结果。只补扫一次，扫描期间再次变化的路径仅过滤，不循环刷新。
+      const fresh = await ensureWorkspaceFileIndex(params.rootPath, params.workspaceIdentity, true);
+      fresh.candidates ??= buildHostFileSearchCandidates(fresh.packed, params.rootPath);
+      return filterCurrentSearchEntries(await searchHostFileCandidates(await fresh.candidates, params.query, limit));
     },
     async listWorkspaceFilesLength(params: { rootPath: string }): Promise<number> {
       const { packed } = await ensureWorkspaceFileIndex(params.rootPath);
