@@ -1,12 +1,10 @@
 import { CancellationToken, type AppUpdater, type UpdateInfo } from "electron-updater";
 import type { HarnessUpdateSnapshot, HarnessUpdateTarget, HarnessUpdateRequest, UpdateStatePayload } from "@zcode/shared";
-import { StepcodeRuntimeUpdater } from "./stepcodeRuntimeUpdater.js";
 
 export const HARNESS_UPDATE_FEED = { provider: "github" as const, owner: "abbcreat-cyber", repo: "stepfun-harness", releaseType: "release" as const };
 
-/** Main owns both update channels. Renderer only receives snapshots and sends commands. */
+/** Main owns the bundled application update. The runtime ships with the tested release. */
 export class HarnessUpdates {
-  readonly step: StepcodeRuntimeUpdater;
   private state: HarnessUpdateSnapshot;
   private pending = new Map<HarnessUpdateTarget, Promise<void>>();
   private cancellation: CancellationToken | null = null;
@@ -15,16 +13,14 @@ export class HarnessUpdates {
   private downloadTimedOut = false;
   private lastProgressBytes = -1;
   private availableDesktop: UpdateInfo | undefined;
-  constructor(private readonly desktop: AppUpdater, versions: { desktop: string; step: string }, runtimeRoot: string,
+  constructor(private readonly desktop: AppUpdater, version: string,
     private readonly install: (target: HarnessUpdateTarget) => Promise<void>,
     private readonly publish: (state: UpdateStatePayload) => void,
     private readonly options: { downloadIdleTimeoutMs?: number; prepareDesktop?: (info: UpdateInfo) => Promise<void>; usePreparedDesktop?: () => () => void } = {},
   ) {
     this.state = {
-      desktop: { currentVersion: versions.desktop, state: { kind: "idle", enabled: true }, checked: false },
-      step: { currentVersion: versions.step, state: { kind: "idle", enabled: true }, checked: false },
+      desktop: { currentVersion: version, state: { kind: "idle", enabled: true }, checked: false },
     };
-    this.step = new StepcodeRuntimeUpdater(runtimeRoot, versions.step, s => this.set("step", s), () => {});
     desktop.autoDownload = false; desktop.autoInstallOnAppQuit = false;
     desktop.allowPrerelease = false; desktop.allowDowngrade = false;
     desktop.setFeedURL(HARNESS_UPDATE_FEED);
@@ -50,7 +46,7 @@ export class HarnessUpdates {
   }
   snapshot(): HarnessUpdateSnapshot { return structuredClone(this.state); }
   async prepareToShow() {
-    if ([this.state.desktop.state.kind, this.state.step.state.kind].some(kind => kind === "download-progress" || kind === "update-downloaded")) return;
+    if (["download-progress", "update-downloaded"].includes(this.state.desktop.state.kind)) return;
     await this.command({ action: "check" });
     await Promise.all([...this.pending.values()]);
     if (this.state.desktop.error) throw new Error(this.state.desktop.error);
@@ -65,7 +61,7 @@ export class HarnessUpdates {
   }
   private set(target: HarnessUpdateTarget, state: UpdateStatePayload) {
     this.state[target].state = state;
-    const entries = [this.state.desktop.state, this.state.step.state];
+    const entries = [this.state.desktop.state];
     const selected = entries.find(s => s.kind === "update-downloaded") ?? entries.find(s => s.kind === "download-progress") ?? entries.find(s => s.kind === "update-available") ?? { kind: "idle" as const, enabled: true };
     this.publish(selected);
   }
@@ -78,9 +74,7 @@ export class HarnessUpdates {
     this.set(target, action === "check" ? { kind: "checking", enabled: false } : { ...prior, kind: "download-progress", enabled: true, progress: "", downloadPhase: "preparing" });
     const operation = (async () => {
       try {
-        if (target === "step") {
-          if (action === "check") await this.step.check({ manual: true }); else await this.step.download();
-        } else if (action === "check") {
+        if (action === "check") {
           await this.desktop.checkForUpdates();
           const info = this.availableDesktop;
           if (info) {
@@ -109,9 +103,11 @@ export class HarnessUpdates {
   async command(request: HarnessUpdateRequest): Promise<HarnessUpdateSnapshot> {
     if (!request || !["snapshot", "check", "download", "cancel", "install"].includes(request.action)) throw new Error("Invalid update action");
     const { action, target } = request;
+    // 旧窗口/旧 IPC 请求也不能绕过整包更新策略启动底座更新。
+    if (target !== undefined && target !== "desktop") throw new Error("Invalid update target");
     if (action === "snapshot") return this.snapshot();
-    if (action === "check" && target === undefined) { this.run("desktop", "check"); this.run("step", "check"); return this.snapshot(); }
-    if (target !== "desktop" && target !== "step") throw new Error("Invalid update target");
+    if (action === "check" && target === undefined) { this.run("desktop", "check"); return this.snapshot(); }
+    if (target !== "desktop") throw new Error("Invalid update target");
     if (action === "check" || action === "download") this.run(target, action);
     if (action === "cancel") {
       if (target === "desktop" && this.cancellation) {
@@ -119,13 +115,13 @@ export class HarnessUpdates {
         const state = this.state.desktop.state;
         if (state.kind === "download-progress") this.set("desktop", { ...state, downloadPhase: "cancelling" });
         this.cancellation.cancel();
-      } else if (target === "step") this.step.cancel();
+      }
     }
     if (action === "install") {
       if (this.installing) throw new Error("Installation is already in progress");
       if (this.state[target].state.kind !== "update-downloaded") throw new Error("Update is not ready to install");
       this.installing = true;
-      try { if (target === "step") await this.step.activate(); await this.install(target); }
+      try { await this.install(target); }
       finally { this.installing = false; }
     }
     return this.snapshot();

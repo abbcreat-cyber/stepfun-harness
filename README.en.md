@@ -32,7 +32,7 @@ StepFun Harness connects the Step Code agent runtime to a full desktop interface
 | **Visible multi-agent workflows** | Inspect phases, parallel tasks, status, and artifacts; save workflows for reuse. |
 | **Bundled document plugins** | Word, PDF, presentations, and spreadsheet skills with supporting assets; activate with `@plugin`. |
 | **Mini task strip** | Follow active tasks and counts outside the main window. |
-| **Unified updates** | Desktop releases come from this GitHub repository; Step runtime releases come from the official source, with separate status and progress. |
+| **Unified updates** | App updates come from this GitHub repository. Step runtime upgrades are integrated and tested before shipping with the app. |
 | **Session statistics** | Model/tool time, first-token latency, output speed, tokens, and cache usage. |
 | **Two built-in hooks** | First-principles reminder and opening explanation, enabled by default and independently configurable. |
 | **Interactive and continuing work** | Structured questions, follow-up messages, cancellation, and persistent scheduled tasks. |

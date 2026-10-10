@@ -1503,7 +1503,7 @@ function syncUpdateStatusWindowChrome(win: BrowserWindow) {
 }
 
 function resolveUpdateStatusWindowHeight(state: UpdateStatePayload) {
-  if (process.env.STEP_BACKEND === "stepcode-local") return 650;
+  if (process.env.STEP_BACKEND === "stepcode-local") return 480;
   if (state.kind === "download-progress") {
     return UPDATE_STATUS_WINDOW_PROGRESS_HEIGHT;
   }

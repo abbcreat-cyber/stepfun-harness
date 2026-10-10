@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,6 @@ export function stepCommand(env) {
   const candidates = [];
   if (env.HARNESS_STEP_BIN) candidates.push(resolve(env.HARNESS_STEP_BIN));
   else {
-    try { const pointer = JSON.parse(readFileSync(join(env.STEPCODE_RUNTIME_DIR, "current.json"), "utf8")); if (typeof pointer.executable === "string") candidates.push(pointer.executable); } catch {}
     candidates.push(join(homedir(), ".stepcode/bin", process.platform === "win32" ? "step.exe" : "step"), "step");
   }
   for (const command of candidates) {

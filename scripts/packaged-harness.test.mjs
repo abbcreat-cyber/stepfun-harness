@@ -24,18 +24,24 @@ test("packaged launch relocates all paths and discards stale author environment"
   assert.equal(env.NODE_OPTIONS, undefined);
   assert.equal(Object.keys(env).filter(k => k.toLowerCase() === "path").length, 1);
 });
-test("update pointer must stay inside its own version directory", async t => {
+test("legacy invalid runtime pointer cannot block packaged startup", async t => {
   const { resources, home } = await fixture(t);
   await mkdir(join(home, "runtime"), { recursive: true });
   await writeFile(join(home, "runtime/current.json"), JSON.stringify({ version: "0.1.3", executable: "C:/other/step.exe" }));
-  await assert.rejects(packagedEnvironment(resources, home, {}), /Invalid Step update pointer/);
+  const env = await packagedEnvironment(resources, home, {});
+  assert.equal(env.STEPCODE_RUNTIME_VERSION, "0.1.2");
+  assert.ok(!env.STEPCODE_BRIDGE_ARGS_JSON.includes("other"));
+  await writeFile(join(home, "runtime/current.json"), "invalid JSON");
+  assert.equal((await packagedEnvironment(resources, home, {})).STEPCODE_RUNTIME_VERSION, "0.1.2");
 });
-test("validated updater directory overrides bundled Step without changing adapter", async t => {
+test("even a newer legacy runtime pointer cannot override the tested bundled runtime", async t => {
   const { resources, home } = await fixture(t);
   const executable = join(home, "runtime/version-0.1.3/files/step.exe");
   await mkdir(join(executable, ".."), { recursive: true }); await writeFile(executable, "fixture");
   await writeFile(join(home, "runtime/current.json"), JSON.stringify({ version: "0.1.3", executable }));
   const env = await packagedEnvironment(resources, home, {});
-  assert.equal(env.STEPCODE_RUNTIME_VERSION, "0.1.3");
-  assert.ok(env.STEPCODE_BRIDGE_ARGS_JSON.includes("0.1.3"));
+  assert.equal(env.STEPCODE_RUNTIME_VERSION, "0.1.2");
+  assert.ok(!env.STEPCODE_BRIDGE_ARGS_JSON.includes("version-0.1.3"));
+  const args = JSON.parse(env.STEPCODE_BRIDGE_ARGS_JSON);
+  assert.equal(JSON.parse(args[1])[0], join(resources, "harness-runtime/step/step.exe"));
 });

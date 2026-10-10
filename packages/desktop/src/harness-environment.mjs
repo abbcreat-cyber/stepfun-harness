@@ -1,5 +1,5 @@
 import { access, mkdir, readFile } from "node:fs/promises";
-import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 export async function packagedEnvironment(resources, home, base = process.env) {
   const root = join(resources, "harness-runtime");
@@ -13,17 +13,8 @@ export async function packagedEnvironment(resources, home, base = process.env) {
     if (/^(STEPCODE_|STEP_CODING_AGENT_DIR$|ZCODE_DESKTOP_|ZCODE_DATA_BASE_DIR$|NODE_PATH$|NODE_OPTIONS$|PYTHONHOME$|PYTHONPATH$)/i.test(key)) delete env[key];
   }
   const data = resolve(home), runtime = join(data, "runtime");
-  let step = join(root, "step", "step.exe"), version = manifest.stepVersion;
-  try {
-    const pointer = JSON.parse(await readFile(join(runtime, "current.json"), "utf8"));
-    const expected = join(runtime, `version-${pointer.version}`, "files");
-    const inside = typeof pointer.executable === "string" ? relative(expected, resolve(pointer.executable)) : "..";
-    if (!/^\d+\.\d+\.\d+$/.test(pointer.version) || inside.startsWith("..") || isAbsolute(inside) || !inside) throw new Error("Invalid Step update pointer");
-    const order = pointer.version.split(".").map((n, i) => Number(n) - Number(manifest.stepVersion.split(".")[i])).find(n => n !== 0) ?? 0;
-    if (order >= 0) { await access(pointer.executable); step = resolve(pointer.executable); version = pointer.version; }
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
+  // 底座和桥接必须来自同一验收包；旧独立更新指针不再参与启动选择。
+  const step = join(root, "step", "step.exe"), version = manifest.stepVersion;
   Object.assign(env, {
     STEP_BACKEND: "stepcode-local", ZCODE_ENV: "production",
     STEPCODE_NODE: join(root, "node", "node.exe"),

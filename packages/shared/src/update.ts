@@ -1,6 +1,6 @@
 import type { ElectronReleaseChannel, Locale } from "./protocol.js";
 
-export type HarnessUpdateTarget = "desktop" | "step";
+export type HarnessUpdateTarget = "desktop";
 export type HarnessUpdateRequest = { action: "snapshot" | "check" | "download" | "cancel" | "install"; target?: HarnessUpdateTarget };
 export type HarnessUpdateItem = {
   currentVersion: string;

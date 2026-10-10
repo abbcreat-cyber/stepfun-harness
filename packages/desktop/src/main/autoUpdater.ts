@@ -1,5 +1,3 @@
-import { join } from "node:path";
-import { StepcodeRuntimeUpdater } from "./stepcodeRuntimeUpdater.js";
 import { HarnessUpdates } from "./harnessUpdates.js";
 import { HarnessPreparedDownload } from "./harnessPreparedDownload.js";
 /* eslint-disable max-lines -- autoUpdater 需要集中维护 Electron 事件、菜单状态与 IPC 交互，过度拆分会让更新状态流更难追踪 */
@@ -34,7 +32,6 @@ const DEV_AUTO_UPDATE_ENV = "ZCODE_AUTO_UPDATE_DEV";
 const DEV_AUTO_UPDATE_SWITCH = "--zcode-auto-update-dev";
 const DEV_AUTO_UPDATE_VERSION_ENV = "ZCODE_AUTO_UPDATE_DEV_VERSION";
 const DEV_AUTO_UPDATE_VERSION_SWITCH = "--zcode-auto-update-dev-version";
-let stepcodeUpdater: StepcodeRuntimeUpdater | null = null;
 let harnessUpdates: HarnessUpdates | null = null;
 let openHarnessUpdateWindow: (() => void) | undefined;
 let readyUpdateVersion: string | null = null;
@@ -160,7 +157,7 @@ function isDevAutoUpdateEnabled(): boolean {
 }
 
 function canUseAutoUpdaterInCurrentRuntime(): boolean {
-  // 本魔改发行版永不下载或安装上游外壳；底座更新由独立 StepcodeRuntimeUpdater 负责。
+  // 本发行版只更新 Harness 整包，底座随已验证的安装包发布。
   return false;
 }
 
@@ -1364,7 +1361,7 @@ export function refreshAutoUpdaterReleaseChannel(
   receivePreviewUpdates: boolean,
   reason = "settings receivePreviewUpdates changed",
 ) {
-  if (stepcodeUpdater) return;
+  if (harnessUpdates || process.env.STEP_BACKEND === "stepcode-local") return;
   const nextChannel: ElectronReleaseChannel = receivePreviewUpdates ? "preview" : "stable";
 
   if (!canUseAutoUpdaterInCurrentRuntime()) {
@@ -1483,17 +1480,14 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
     };
     const preparedDownloads = new HarnessPreparedDownload(autoUpdater);
     harnessUpdates = new HarnessUpdates(autoUpdater,
-      { desktop: app.getVersion(), step: process.env.STEPCODE_RUNTIME_VERSION || "0.1.3" },
-      process.env.STEPCODE_RUNTIME_DIR || join(app.getPath("userData"), "stepcode-runtime"),
-      async target => {
+      app.getVersion(),
+      async () => {
         await options.onBeforeQuitAndInstall?.();
-        if (target === "desktop") autoUpdater.quitAndInstall(false, true);
-        else { app.relaunch(); app.quit(); }
+        autoUpdater.quitAndInstall(false, true);
       },
       state => { readyUpdateVersion = state.kind === "update-downloaded" ? state.version : null; setAutoUpdaterMenuState(state); },
       { prepareDesktop: info => preparedDownloads.prepare(info), usePreparedDesktop: () => preparedDownloads.usePrepared() },
     );
-    stepcodeUpdater = harnessUpdates.step;
     ipcMain.handle(PlatformChannels.ManageHarnessUpdate, (_event, request) => harnessUpdates!.command(request));
     // 旧更新按钮也进入统一界面，不能误把软件版本交给底座安装器。
     for (const channel of [PlatformChannels.DownloadUpdate, PlatformChannels.CancelUpdateDownload, PlatformChannels.SkipUpdateVersion, PlatformChannels.QuitAndInstallUpdate]) {
@@ -1886,21 +1880,6 @@ export function requestForceAutoUpdate(
 export function checkForUpdateMenuClick(originWindow?: BrowserWindow | null) {
   if (harnessUpdates) {
     openHarnessUpdateWindow?.();
-    return;
-  }
-  if (stepcodeUpdater) {
-    const target = originWindow && !originWindow.isDestroyed()
-      ? originWindow
-      : BrowserWindow.getAllWindows().find((win) => !win.isDestroyed() && win.getTitle() !== "Step Code Mini");
-    // 底座检查结果必须沿现有反馈通道回到界面，不能只写日志后让托盘点击没有反应。
-    void stepcodeUpdater.check({ manual: true })
-      .then((result) => { if (target && !target.isDestroyed()) target.webContents.send(PlatformChannels.UpdateCheckResult, result); })
-      .catch((error) => {
-        logger.warn("[stepcode-update] check failed", error);
-        if (target && !target.isDestroyed()) target.webContents.send(PlatformChannels.UpdateCheckResult, {
-          kind: "error", message: error instanceof Error ? error.message : String(error),
-        } satisfies UpdateCheckResultPayload);
-      });
     return;
   }
   logger.info("[auto-update] user clicked Check for Updates");

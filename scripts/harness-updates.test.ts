@@ -27,7 +27,7 @@ class FakeUpdater extends EventEmitter {
 const settle = () => new Promise(resolve => setImmediate(resolve));
 test("own release feed, one operation per channel, cancelled download can retry, install only when ready", async () => {
   const fake = new FakeUpdater(); const installed: string[] = [];
-  const updates = new HarnessUpdates(fake as unknown as AppUpdater, { desktop: "0.1.0", step: "0.1.2" }, "D:/Temp/harness-updater-test", async target => { installed.push(target); }, () => {});
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "0.1.0", async target => { installed.push(target); }, () => {});
   assert.deepEqual(fake.feed, HARNESS_UPDATE_FEED);
   await assert.rejects(updates.command({ action: "install", target: "desktop" }), /not ready/);
   await updates.command({ action: "check", target: "desktop" }); await updates.command({ action: "check", target: "desktop" });
@@ -40,12 +40,12 @@ test("own release feed, one operation per channel, cancelled download can retry,
   await updates.command({ action: "download", target: "desktop" }); fake.finishDownload(); await settle();
   await updates.command({ action: "check", target: "desktop" }); assert.equal(updates.snapshot().desktop.state.kind, "update-downloaded");
   await updates.command({ action: "install", target: "desktop" }); assert.deepEqual(installed, ["desktop"]);
-  assert.equal(updates.snapshot().step.currentVersion, "0.1.2");
+  assert.deepEqual(Object.keys(updates.snapshot()), ["desktop"]);
 });
 
 test("download preparation has no fabricated percentage; sub-one-percent progress remains visible", async () => {
   const fake = new FakeUpdater();
-  const updates = new HarnessUpdates(fake as unknown as AppUpdater, { desktop: "1.0.2", step: "0.1.3" }, "D:/Temp/harness-updater-test", async () => {}, () => {});
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.2", async () => {}, () => {});
   await updates.command({ action: "check", target: "desktop" }); fake.finishCheck(); await settle();
   await updates.command({ action: "download", target: "desktop" });
   assert.equal(updates.snapshot().desktop.state.kind, "download-progress");
@@ -65,7 +65,7 @@ test("download preparation has no fabricated percentage; sub-one-percent progres
 
 test("idle download deadline cancels the transport and enables explicit retry", async () => {
   const fake = new FakeUpdater();
-  const updates = new HarnessUpdates(fake as unknown as AppUpdater, { desktop: "1.0.2", step: "0.1.3" }, "D:/Temp/harness-updater-test", async () => {}, () => {}, { downloadIdleTimeoutMs: 20 });
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.2", async () => {}, () => {}, { downloadIdleTimeoutMs: 20 });
   await updates.command({ action: "check", target: "desktop" }); fake.finishCheck(); await settle();
   await updates.command({ action: "download", target: "desktop" });
   await new Promise(resolve => setTimeout(resolve, 50));
@@ -76,11 +76,10 @@ test("idle download deadline cancels the transport and enables explicit retry", 
   assert.equal(updates.snapshot().desktop.state.kind, "update-downloaded");
 });
 
-test("update window waits for the prepared index, instead of displaying a fake downloading state", async t => {
+test("update window waits for the prepared index, instead of displaying a fake downloading state", async () => {
   const fake = new FakeUpdater(); let ready = () => {}; let shown = false;
   const prepared = new Promise<void>(resolve => { ready = resolve; });
-  const updates = new HarnessUpdates(fake as unknown as AppUpdater, { desktop: "1.0.2", step: "0.1.3" }, "D:/Temp/harness-updater-test", async () => {}, () => {}, { prepareDesktop: () => prepared });
-  t.mock.method(updates.step, "check", async () => ({ kind: "up-to-date", currentVersion: "0.1.3" }));
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.2", async () => {}, () => {}, { prepareDesktop: () => prepared });
   const opening = updates.prepareToShow().then(() => { shown = true; });
   fake.finishCheck(); await settle();
   assert.equal(shown, false); assert.equal(updates.snapshot().desktop.state.kind, "checking");
@@ -128,11 +127,25 @@ test("installer probe accepts real EXE bytes, aborts ignored ranges and rejects 
 
 test("failed installer connection never exposes an update button and the next check can retry", async () => {
   const fake = new FakeUpdater(); let fail = true;
-  const updates = new HarnessUpdates(fake as unknown as AppUpdater, { desktop: "1.0.5", step: "0.1.3" }, "D:/Temp/harness-updater-test", async () => {}, () => {},
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.5", async () => {}, () => {},
     { prepareDesktop: async () => { if (fail) throw new Error("installer unreachable"); } });
   await updates.command({ action: "check", target: "desktop" }); fake.finishCheck(); await settle();
   assert.equal(updates.snapshot().desktop.state.kind, "idle");
   await assert.rejects(updates.command({ action: "download", target: "desktop" }), /No verified/);
   fail = false; await updates.command({ action: "check", target: "desktop" }); fake.finishCheck(); await settle();
   assert.equal(updates.snapshot().desktop.state.kind, "update-available");
+});
+
+test("legacy runtime update requests cannot check, download or activate a separate runtime", async t => {
+  let network = 0, installs = 0;
+  t.mock.method(globalThis, "fetch", async () => { network++; throw new Error("Unexpected runtime network"); });
+  const fake = new FakeUpdater();
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.6", async () => { installs++; }, () => {});
+  for (const action of ["snapshot", "check", "download", "cancel", "install"]) {
+    await assert.rejects(updates.command(JSON.parse(JSON.stringify({ action, target: "step" }))), /Invalid update target/);
+  }
+  assert.equal(network, 0); assert.equal(installs, 0); assert.equal(fake.checks, 0);
+  await updates.command({ action: "check" }); fake.finishCheck(); await settle();
+  assert.equal(fake.checks, 1); assert.equal(network, 0);
+  assert.deepEqual(Object.keys(updates.snapshot()), ["desktop"]);
 });
