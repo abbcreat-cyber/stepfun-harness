@@ -32,8 +32,8 @@ import {
 } from "./desktopZoom.js";
 import { resolveDesktopWindowChromeState } from "./desktopWindowChromeState.js";
 import {
-  isAllowedLocalHtmlTransition,
-  isLocalHtmlBrowserUrl,
+  isAllowedLocalPreviewTransition,
+  isLocalPreviewBrowserUrl,
 } from "./browserView/browserNavigationPolicy.js";
 import {
   MIN_DESKTOP_WINDOW_HEIGHT,
@@ -269,7 +269,7 @@ function attachWindowsWindowRepaint(targetWindow: BrowserWindow) {
 function isAllowedEmbeddedBrowserUrl(url: string): boolean {
   try {
     return (
-      isLocalHtmlBrowserUrl(url) || ALLOWED_EMBEDDED_BROWSER_PROTOCOLS.has(new URL(url).protocol)
+      isLocalPreviewBrowserUrl(url) || ALLOWED_EMBEDDED_BROWSER_PROTOCOLS.has(new URL(url).protocol)
     );
   } catch {
     return false;
@@ -279,7 +279,7 @@ function isAllowedEmbeddedBrowserUrl(url: string): boolean {
 function isAllowedEmbeddedBrowserNewWindowUrl(url: string): boolean {
   try {
     return (
-      isLocalHtmlBrowserUrl(url) ||
+      isLocalPreviewBrowserUrl(url) ||
       ALLOWED_EMBEDDED_BROWSER_NEW_WINDOW_PROTOCOLS.has(new URL(url).protocol)
     );
   } catch {
@@ -384,7 +384,7 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
     const guestUrl = options.guestWebContents.getURL();
     if (
       !isAllowedEmbeddedBrowserNewWindowUrl(url) ||
-      !isAllowedLocalHtmlTransition(url, guestUrl)
+      !isAllowedLocalPreviewTransition(url, guestUrl)
     ) {
       options.logger.warn(`[browser-pane] blocked unsupported webview popup url: ${url}`);
       return { action: "deny" };
@@ -457,7 +457,7 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
 
   // 允许本地产物互相跳转，仍阻止普通网站借链接/重定向读取本机 HTML。
   options.guestWebContents.on("will-redirect", (event, url) => {
-    if (!isAllowedLocalHtmlTransition(url, options.guestWebContents.getURL()))
+    if (!isAllowedLocalPreviewTransition(url, options.guestWebContents.getURL()))
       event.preventDefault();
   });
   options.guestWebContents.on("will-navigate", (event, url) => {
@@ -465,7 +465,7 @@ function attachEmbeddedBrowserWindowOpenHandler(options: {
       typeof options.guestWebContents.getURL === "function"
         ? options.guestWebContents.getURL()
         : "";
-    if (!isAllowedLocalHtmlTransition(url, guestUrl)) {
+    if (!isAllowedLocalPreviewTransition(url, guestUrl)) {
       event.preventDefault();
       return;
     }

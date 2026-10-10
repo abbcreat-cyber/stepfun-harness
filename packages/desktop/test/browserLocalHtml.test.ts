@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import {
   isAllowedBrowserUrl,
-  isAllowedLocalHtmlTransition,
-  isLocalHtmlBrowserUrl,
+  isAllowedLocalPreviewTransition,
+  isLocalPreviewBrowserUrl,
 } from "../src/main/browserView/browserNavigationPolicy.ts";
 import {
   handleEvaluate,
@@ -15,6 +15,40 @@ import { createBrowserControlMainBridge } from "../src/host/browserControlMainBr
 import type { ControlledView } from "../src/main/browserView/browserCommandTypes.ts";
 
 const pageUrl = "file:///D:/pages/%E4%B8%AD%E6%96%87%20page.html?theme=dark#intro";
+
+test("local SVG previews use the same navigation and origin rules as HTML", async () => {
+  const svg = "file:///D:/Apps/sekiro/%E5%B1%B1%E6%B2%B3%E6%97%A0%E6%81%99.svg";
+  for (const url of [
+    svg,
+    "file:///D:/Apps/sekiro/山河无恙.svg",
+    "file:///D:/中文%20目录/图.SVG?theme=dark#art",
+  ])
+    assert.equal(isAllowedBrowserUrl(url), true, url);
+  assert.equal(isAllowedLocalPreviewTransition(svg, pageUrl), true);
+  assert.equal(isAllowedLocalPreviewTransition(pageUrl, svg), true);
+  assert.equal(isAllowedLocalPreviewTransition(svg, "https://example.com"), false);
+  assert.equal(isAllowedLocalPreviewTransition(svg, "about:blank"), false);
+  assert.equal(isAllowedLocalPreviewTransition("file:///D:/private.json", svg), false);
+  const view = evaluateView();
+  const calls: string[] = [];
+  view.webContents.loadURL = async (url) => {
+    calls.push(url);
+    if (url.includes("不存在")) throw new Error("ERR_FILE_NOT_FOUND");
+  };
+  const done = (result: Parameters<Parameters<typeof handleNavigate>[2]>[0]) => ({
+    ...result,
+    elapsedMs: 0,
+  });
+  assert.equal((await handleNavigate(view, { method: "navigate", url: svg }, done)).ok, true);
+  const failed = await handleNavigate(
+    view,
+    { method: "navigate", url: "file:///D:/不存在.svg" },
+    done,
+  );
+  assert.equal(failed.ok, false);
+  assert.match(failed.error?.message ?? "", /ERR_FILE_NOT_FOUND/);
+  assert.equal(calls.length, 2);
+});
 
 test("local HTML supports encoded paths, queries and fragments while preserving web navigation", () => {
   for (const url of [
@@ -27,10 +61,10 @@ test("local HTML supports encoded paths, queries and fragments while preserving 
   ]) {
     assert.equal(isAllowedBrowserUrl(url), true, url);
   }
-  assert.equal(isLocalHtmlBrowserUrl(pageUrl), true);
+  assert.equal(isLocalPreviewBrowserUrl(pageUrl), true);
 });
 
-test("local preview rejects non-HTML, shared paths and invalid schemes", () => {
+test("local preview rejects unsupported types, shared paths and invalid schemes", () => {
   for (const url of [
     "file:///D:/secret.json",
     "file://server/share/page.html",
@@ -49,11 +83,11 @@ test("local preview rejects non-HTML, shared paths and invalid schemes", () => {
 });
 
 test("page links permit local HTML navigation only from an existing local HTML document", () => {
-  assert.equal(isAllowedLocalHtmlTransition("file:///D:/pages/next.htm", pageUrl), true);
-  assert.equal(isAllowedLocalHtmlTransition(pageUrl, "https://example.com"), false);
-  assert.equal(isAllowedLocalHtmlTransition(pageUrl, "about:blank"), false);
-  assert.equal(isAllowedLocalHtmlTransition("file:///D:/private.json", pageUrl), false);
-  assert.equal(isAllowedLocalHtmlTransition("https://example.com", pageUrl), true);
+  assert.equal(isAllowedLocalPreviewTransition("file:///D:/pages/next.htm", pageUrl), true);
+  assert.equal(isAllowedLocalPreviewTransition(pageUrl, "https://example.com"), false);
+  assert.equal(isAllowedLocalPreviewTransition(pageUrl, "about:blank"), false);
+  assert.equal(isAllowedLocalPreviewTransition("file:///D:/private.json", pageUrl), false);
+  assert.equal(isAllowedLocalPreviewTransition("https://example.com", pageUrl), true);
 });
 
 test("navigate actually loads local HTML and reports missing files as failures", async () => {

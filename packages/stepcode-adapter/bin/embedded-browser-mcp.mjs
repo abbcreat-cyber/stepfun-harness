@@ -7,7 +7,7 @@ const directory = process.argv[process.argv.indexOf("--bridge-dir") + 1];
 const string = { type: "string" };
 const tabId = { type: "string", description: "只可使用 browser_tabs 或 browser_new_tab 返回的真实 tabId；首次导航请省略，不得编造。" };
 const tools = [
-  ["browser_navigate", "在软件右侧内置浏览器中打开 HTTP/HTTPS 网页或本机 file:/// HTML/HTM 页面（支持中文路径、相对资源），不启动外部浏览器。本地 HTML 直接导航，无需另起静态服务器；保留页面沙箱与跨源限制。", { url: string, tabId }, ["url"], "navigate"],
+  ["browser_navigate", "在软件右侧内置浏览器中打开 HTTP/HTTPS 网页或本机 file:/// HTML/HTM/SVG 文件（支持中文路径、相对资源），不启动外部浏览器。本地 HTML、SVG 直接导航，无需另起静态服务器；路径须逐字采用实际文件名，不自行改字。保留页面沙箱与跨源限制。", { url: string, tabId }, ["url"], "navigate"],
   ["browser_snapshot", "读取内置网页的可见内容和可点击 ref；交互前先读取。", { tabId }, [], "snapshot"],
   ["browser_click", "点击最新快照中的 ref，仅操作软件内置网页。", { ref: string, tabId }, ["ref"], "click"],
   ["browser_type", "向内置网页输入文本，可用 ref 指定输入框。", { ref: string, text: string, tabId }, ["text"], "type"],
