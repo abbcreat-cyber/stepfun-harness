@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isZCodeAgentProvider, ZCODE_AGENT_PROVIDER, type ZCodeProvider } from "@zcode/shared";
 import type { IModelSelectionService, ModelSelectionView } from "@zcode/services";
 import {
@@ -10,7 +10,7 @@ import { logger } from "@/logger.js";
 type DraftModelReadinessStatus = "checking" | "ready" | "missing" | "check-failed";
 
 interface DraftModelReadinessState {
-  gateKey: string;
+  activation: object;
   status: DraftModelReadinessStatus;
   dismissed: boolean;
 }
@@ -51,28 +51,40 @@ export function useDraftModelReadinessGate(params: {
   const displayProvider = provider ?? ZCODE_AGENT_PROVIDER;
   const enabled = sessionId === null && isZCodeAgentProvider(displayProvider);
   const gateKey = `${workspaceKey}\u0000${displayProvider}`;
+  // 正式会话切回草稿时旧 ready 曾先触发预热，effect 写 checking 后又回收，
+  // 导致底座重复启动。按本次激活隔离，首次 render 就挡住旧状态，不能靠延时回收兜底。
+  const activation = useMemo(() => ({}), [gateKey, enabled, modelSelectionService]);
+  const activeActivation = useRef(activation);
+  useLayoutEffect(() => {
+    activeActivation.current = activation;
+  }, [activation]);
   const [state, setState] = useState<DraftModelReadinessState>(() => ({
-    gateKey,
+    activation,
     status: enabled ? "checking" : "ready",
     dismissed: false,
   }));
 
   const commitStatus = useCallback(
     (status: DraftModelReadinessStatus, options: { revealMissing?: boolean } = {}) => {
-      setState((current) => ({
-        gateKey,
-        status,
-        dismissed:
-          status === "missing"
-            ? options.revealMissing
-              ? false
-              : current.gateKey === gateKey && current.status === "missing"
-                ? current.dismissed
-                : false
-            : false,
-      }));
+      // 旧草稿的发送前复查可能晚于新草稿就绪；迟到回包不能覆盖当前校验结果。
+      setState((current) =>
+        activeActivation.current !== activation
+          ? current
+          : {
+              activation,
+              status,
+              dismissed:
+                status === "missing"
+                  ? options.revealMissing
+                    ? false
+                    : current.activation === activation && current.status === "missing"
+                      ? current.dismissed
+                      : false
+                  : false,
+            },
+      );
     },
-    [gateKey],
+    [activation],
   );
 
   useEffect(() => {
@@ -122,9 +134,9 @@ export function useDraftModelReadinessGate(params: {
   }, [commitStatus, enabled, modelSelectionService, workspaceKey]);
 
   const effectiveState: DraftModelReadinessState =
-    state.gateKey === gateKey
+    state.activation === activation
       ? state
-      : { gateKey, status: enabled ? "checking" : "ready", dismissed: false };
+      : { activation, status: enabled ? "checking" : "ready", dismissed: false };
 
   const markProviderNotReady = useCallback(() => {
     commitStatus("missing", { revealMissing: true });
@@ -166,11 +178,11 @@ export function useDraftModelReadinessGate(params: {
 
   const dismissError = useCallback(() => {
     setState((current) =>
-      current.gateKey === gateKey && current.status === "missing"
+      current.activation === activation && current.status === "missing"
         ? { ...current, dismissed: true }
         : current,
     );
-  }, [gateKey]);
+  }, [activation]);
 
   return {
     agentStartupAllowed:
