@@ -11,6 +11,7 @@ import {
   GitBranchIcon,
   GoalIcon,
   PencilIcon,
+  RotateCcwIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
   TrendingUpDownIcon,
@@ -249,7 +250,7 @@ interface ConversationRowViewProps {
   onFork?: (target: ConversationRowTarget) => void;
   /** assistant entity 反馈 CAS；UI 先乐观更新，命令失败时回滚。 */
   onFeedbackChange?: AssistantFeedbackHandler;
-  /** 协议兼容：上层仍可提供 retryTurn capability，但产品 UI 不渲染普通重试入口。 */
+  /** 重试入口由服务端行级 actions.canRetry 控制。 */
   onRetry?: (target: ConversationRowTarget) => void;
   /** user 行的 edit 入口（editUserQuery command，用行内编辑文本替换该轮）。 */
   onEdit?: UserInputEditHandler;
@@ -1037,7 +1038,9 @@ const UserInputRowView = memo(function UserInputRowView({
       data-testid={testId(TID_V4_EDIT_REWIND_WORKSPACE, String(row.rowId))}
       aria-label={rewindWorkspaceLabel}
       onClick={() => {
-        void handleSubmitEdit(draft, "rewind");
+        // 与普通提交保持同一输入源；Lexical 已更新而 React draft 尚未同步时，
+        // 读旧 draft 会先还原文件、再把旧要求重发，导致文件立刻被重新修改。
+        void handleSubmitEdit(inputApiRef.current?.getMarkdown() ?? draft, "rewind");
       }}
     >
       <FileClockIcon className="size-4" />
@@ -1185,7 +1188,7 @@ const UserInputRowView = memo(function UserInputRowView({
           error={null}
           onApply={() => {}}
           onConversationOnly={() => {
-            void handleSubmitEdit(draft, "preserve");
+            void handleSubmitEdit(inputApiRef.current?.getMarkdown() ?? draft, "preserve");
           }}
         />
       </RowShell>
@@ -1318,6 +1321,7 @@ export const ConversationAssistantTextActions = memo(function ConversationAssist
   sessionId,
   turnId,
   onFork,
+  onRetry,
   onFeedbackChange,
   className,
 }: {
@@ -1412,6 +1416,16 @@ export const ConversationAssistantTextActions = memo(function ConversationAssist
         label={copyLabel}
         tooltip={resolveTooltip(copyLabel)}
       />
+      {onRetry && entityId ? (
+        <MessageAction
+          aria-label={intl.formatMessage({ id: "chat.message.retry" })}
+          tooltip={intl.formatMessage({ id: "chat.message.retry" })}
+          data-testid={`v4-retry-${rowId}`}
+          onClick={() => onRetry({ rowId, entityId })}
+        >
+          <RotateCcwIcon className="size-3.5" />
+        </MessageAction>
+      ) : null}
       {entityId && onFeedbackChange ? (
         <>
           <MessageAction

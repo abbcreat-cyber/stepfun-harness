@@ -66,6 +66,7 @@ import { createSessionMethods } from "../src/bridge/methods-session.mjs";
 import { createV4Methods } from "../src/bridge/methods-v4.mjs";
 import { createManagedQueue } from "../src/bridge/managed-queue.mjs";
 import { createCompaction } from "../src/bridge/compaction.mjs";
+import { createHistoryControls } from "../src/bridge/history-controls.mjs";
 
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -218,6 +219,7 @@ Object.assign(ctx, createClientRuntime(ctx));
 Object.assign(ctx, createSessionLifecycle(ctx));
 Object.assign(ctx, createManagedQueue(ctx));
 Object.assign(ctx, createCompaction(ctx));
+Object.assign(ctx, createHistoryControls(ctx));
 const { respondResult, respondError } = ctx;
 
 // ── 方法处理器 ──────────────────────────────────────────────────────────────
@@ -233,7 +235,7 @@ const methodHandlers = {
 		// 在途双执行是已记录的已知限制（spec §7.2）。
 		const replayed = ctx.issuedCommandAcks.get(`${typeof envelope.sessionId === "string" ? envelope.sessionId : null}#${commandId}`);
 		if (replayed) return replayed;
-		ctx.stateRevision += 1;
+		if (!["editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback"].includes(envelope.type)) ctx.stateRevision += 1;
 		const revisionAtDecision = ctx.stateRevision;
 		// 幂等 ack 回放表登记：v4/commands/query 查询同一 commandId 时回放 ack.result。
 		const rememberAck = (ack) => {
@@ -247,6 +249,13 @@ const methodHandlers = {
 			return ack;
 		};
 		switch (envelope.type) {
+			case "editUserQuery":
+			case "retryTurn":
+			case "applyFileRewind":
+			case "setAssistantFeedback": {
+				const result = await ctx.historyCommand(envelope, revisionAtDecision);
+				return rememberAck(makeCommandAck({ commandId, revisionAtDecision: ctx.stateRevision, ...(result ? { result } : {}) }));
+			}
 			case "createSession": {
 				const firstInput = envelope.payload?.firstInput;
 				// P0-01：空输入先拒（建会话之前）——防草稿泄漏进 sessions-index/conversation
@@ -527,7 +536,7 @@ attachJsonlLineReader(process.stdin, (line) => {
 		if (frame.id !== undefined) {
 			// 准入/队列变更同链串行，避免取消 ACK 后已经选中的队首继续执行。
 			// 交互回答与 Host 回执保持独立，否则等待权限的任务会死锁。
-			const serializedTypes = new Set(["createSession", "sendText", "compact", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
+			const serializedTypes = new Set(["editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback", "createSession", "sendText", "compact", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
 			if ((frame.method === "v4/command" && serializedTypes.has(frame.params?.type)) || ["session/create", "session/send", "session/stop", "session/setModel", "session/setThoughtLevel"].includes(frame.method)) {
 				void ctx.runInputOperation(() => handleRequestLine(frame));
 			} else void handleRequestLine(frame);

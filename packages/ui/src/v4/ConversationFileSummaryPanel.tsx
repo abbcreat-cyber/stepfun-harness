@@ -160,7 +160,11 @@ export function ConversationFileSummaryPanel({
     try {
       const ack: CommandAck = await context.applyFileRewind(target);
       if (ack.status === "accepted" || ack.status === "duplicate") {
-        setDialogOpen(false);
+        // 预览后文件仍可能被外部修改；ACK 接受请求不代表文件实际回退成功。
+        if (ack.result?.type === "applyFileRewind" && !ack.result.applied) {
+          setPreview(ack.result.preview);
+          setError(ack.result.response);
+        } else setDialogOpen(false);
       } else {
         setError(
           ack.message ?? intl.formatMessage({ id: "chat.changeSummary.rewindDialog.error" }),

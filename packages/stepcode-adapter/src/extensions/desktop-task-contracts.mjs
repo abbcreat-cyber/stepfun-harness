@@ -4,10 +4,12 @@ import { withCommunicationPolicy } from "../assistant-communication.mjs";
 import { registerAssistantOpeningHook } from "../assistant-opening-hook.mjs";
 import { readBuiltinHooks, FIRST_PRINCIPLES_REMINDER } from "../builtin-hooks.mjs";
 import { orderRuntimeNotices, withDesktopInputOrigin } from "../runtime-notice-context.mjs";
+import { registerFileCheckpoints } from "../file-checkpoints.mjs";
 
 /** 给模型真实产品工具边界，并在执行前阻止把常驻规则变成烧迭代的工作目标。 */
 export default function desktopTaskContracts(pi) {
   if (process.env.STEPCODE_TASK_MODE !== "desktop") return;
+  registerFileCheckpoints(pi);
   let loadedSkills = [], pluginDiscoveryContext = "";
   let hookSettings = {}, hookSettingsError = "";
   let needsPluginTarget = false;

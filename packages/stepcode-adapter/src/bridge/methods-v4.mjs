@@ -12,6 +12,8 @@ import { BridgeError } from "./errors.mjs";
 /** @param {any} ctx 共享桥接状态（v4Subscriptions/ownedSubscriptions/connectionFlowStates 等） */
 export function createV4Methods(ctx) {
 	return {
+		"v4/conversation/fileRewindPreview": p => ctx.runInputOperation(() => ctx.fileRewindPreview(p)),
+		"v4/conversation/fileChanges": p => ctx.runInputOperation(() => ctx.fileChanges(p)),
 		"workflows/runs": p => ctx.workflowBridge.savedRuns(p),
 	 "workflows/list": async p => (await ctx.savedCatalog(p)).list(p),
 	 "workflows/get": async p => (await ctx.savedCatalog(p)).get(p),
@@ -64,6 +66,8 @@ export function createV4Methods(ctx) {
 			setImmediate(() => {
 				if (topic.startsWith("conversation/")) {
 					ctx.broadcastConversationSnapshot(topic, "initial", subscriptionId);
+					// 旧快照缺少消息实体时，仅从原生持久历史补齐，不调用模型生成内容。
+					void ctx.runInputOperation(() => ctx.hydrateHistoryControls?.(topic.slice(13))).catch(error => log(`history hydration: ${error.message}`));
 	                void ctx.hydrateStatistics(topic.slice(13)).then(changed => { if (changed) ctx.broadcastConversationSnapshot(topic); }).catch(error=>log(error.message));
 	                if (ctx.readConversation(topic.slice(13))) void ctx.workflowBridge.hydrate(topic.slice(13)).then(() => ctx.broadcastConversationSnapshot(topic)).catch(error => log(error.message));
 				} else if (topic.startsWith("sessions-index/")) {

@@ -54,6 +54,7 @@ import { withDesktopQuestionnaire } from "./desktop-questionnaire.mjs";
 import { assertProviderCommunicationLoaded, withProviderCommunication } from "./provider-communication.mjs";
 import { assertDesktopAutomationLoaded, withDesktopAutomation } from "./desktop-automation.mjs";
 import { withDesktopTaskContracts } from "./desktop-task-contracts.mjs";
+import { resetProviderRequestBinding } from "./provider-request-options.mjs";
 
 /**
  * @typedef {object} StepCodeRpcClientOptions
@@ -438,6 +439,7 @@ export class StepCodeRpcClient {
 			this.pendingRequests.set(id, {
 				resolve: (response) => {
 					clearTimeout(timer);
+					if (response.success && !response.data?.cancelled && ["fork", "clone", "switch_session", "new_session"].includes(command.type)) resetProviderRequestBinding(this);
 					resolve(response);
 				},
 				reject: (error) => {

@@ -124,7 +124,9 @@ export function createProjection(ctx) {
 	}
 
 	function nextRowId() {
-		return ctx.conversationRows.length + 1;
+		const next = Math.max(ctx.primarySession?.rowHighWater ?? 0, ctx.conversationRows.at(-1)?.rowId ?? 0) + 1;
+		if (ctx.primarySession) ctx.primarySession.rowHighWater = next;
+		return next;
 	}
 
 	/** Step 事件在 v4 通道实时增量投影；终态快照用于恢复与持久化。 */
@@ -249,6 +251,8 @@ export function createProjection(ctx) {
 					// turn 终态：steer 并入项随本 turn 退场（近似记录完成）；已归属项在
 					// agent_start 时已消费，无单槽可清（spec §4 settleTurn）。
 					ctx.ledger.settleTurn();
+					// 原生 entry 在 settled 后才完整；先绑定历史动作，再让已接受队列继续。
+					if (event.type === "agent_settled") void ctx.runInputOperation(() => ctx.syncHistoryControls?.()).catch(error => log(`history controls: ${error.message}`));
 					ctx.scheduleQueueDrain();
 					ctx.stateRevision += 1;
 					broadcastConversationSnapshot();

@@ -3,6 +3,8 @@ import { COMMUNICATION_COMMAND, requiresProviderCommunication } from "./provider
 
 export const OPTIONS_RECEIPT_KEY = "stepcode-provider-options-receipt";
 const bindings = new WeakMap();
+// fork/switch_session 会在同一进程重建扩展；child 未变，旧 generation 仍须作废。
+export function resetProviderRequestBinding(client) { bindings.delete(client); }
 const unmapped = () => ({ hasMappings: false, reasoningMapped: false, maxOutputMapped: false });
 
 function nativeClient(client) {
