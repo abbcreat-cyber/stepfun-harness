@@ -944,6 +944,11 @@ const enUS: Record<string, string> = {
   "sidebar.profile.stepCommunity.menuReplaceKey": "Replace API Key",
   "sidebar.profile.stepCommunity.menuManageKey": "Manage keys on the StepFun platform",
   "sidebar.profile.stepCommunity.menuEnterKey": "Enter API Key",
+  "sidebar.profile.stepCommunity.rename.action": "Change username",
+  "sidebar.profile.stepCommunity.rename.title": "Your name",
+  "sidebar.profile.stepCommunity.rename.description": "Shown in the sidebar and saved only on this computer.",
+  "sidebar.profile.stepCommunity.rename.label": "Username",
+  "sidebar.profile.stepCommunity.rename.saveFailed": "Couldn't save your name. Please try again.",
   // Read-only "StepFun balance" row at the top of the sidebar popover; rendered only when an API key is configured.
   "sidebar.profile.stepCommunity.balance.label": "StepFun balance",
   "sidebar.profile.stepCommunity.balance.login": "Please sign in",

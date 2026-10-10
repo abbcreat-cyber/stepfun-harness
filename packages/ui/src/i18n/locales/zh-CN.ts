@@ -863,6 +863,11 @@ const zhCN: Record<string, string> = {
   "sidebar.profile.stepCommunity.menuReplaceKey": "更换 API Key",
   "sidebar.profile.stepCommunity.menuManageKey": "打开阶跃平台管理密钥",
   "sidebar.profile.stepCommunity.menuEnterKey": "填入 API Key",
+  "sidebar.profile.stepCommunity.rename.action": "修改用户名",
+  "sidebar.profile.stepCommunity.rename.title": "你的名字",
+  "sidebar.profile.stepCommunity.rename.description": "显示在侧边栏，仅保存在这台电脑。",
+  "sidebar.profile.stepCommunity.rename.label": "用户名",
+  "sidebar.profile.stepCommunity.rename.saveFailed": "保存失败，请重试",
   // 侧栏浮层顶部的「阶跃星辰余额」只读行（仅已接入 API Key 时渲染；失败/非 api 模式不挂载）。
   "sidebar.profile.stepCommunity.balance.label": "阶跃星辰余额",
   "sidebar.profile.stepCommunity.balance.login": "请登录",

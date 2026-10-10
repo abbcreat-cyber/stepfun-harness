@@ -443,7 +443,7 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
             {stepCommunityActive && (
               <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
                 <User className="size-4" />
-                修改用户名
+                {intl.formatMessage({ id: "sidebar.profile.stepCommunity.rename.action" })}
               </DropdownMenuItem>
             )}
             <DropdownMenuSub>
