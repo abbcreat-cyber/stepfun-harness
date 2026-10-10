@@ -118,6 +118,7 @@ import "../suites/desktop-input-context-native.mjs";
 import "../suites/assistant-communication-native.mjs";
 import "../suites/assistant-opening-hook.mjs";
 import "../suites/browser-context-contract.mjs";
+import "../suites/workflow-notices.mjs";
 import "../suites/assistant-opening-native.mjs";
 import "../suites/plugin-discovery-native.mjs";
 import "../suites/builtin-hooks-native.mjs";

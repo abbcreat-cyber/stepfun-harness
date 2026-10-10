@@ -62,7 +62,7 @@ export function createSessionLifecycle(ctx) {
 	 *    delivery + modelDeferred，spec §10）——R6 类场景可从 bridge.log 取证走了哪个分支。
 	 * @param {{ commandId: string, text: string, attachments?: any[], mode?: string, modelSelection?: any, modelSelectionExplicit?: boolean, requestedDelivery?: string, followupMode?: string, kind?: string }} input
 	 */
-	async function admitAndSend({ commandId, text, attachments = [], mode, modelSelection, modelSelectionExplicit = false, requestedDelivery, followupMode, kind = "sendText", clientId, automationId, toolDisallowlist, botDeliveryTarget }) {
+	async function admitAndSend({ commandId, text, attachments = [], mode, modelSelection, modelSelectionExplicit = false, requestedDelivery, followupMode, kind = "sendText", clientId, automationId, toolDisallowlist, botDeliveryTarget, workflowNotice }) {
 		const { images, text: promptText } = await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, attachments, text);
 		const explicitSelection = sanitizeModelSelection(modelSelection);
 		let selection = explicitSelection ?? ctx.primarySession.modelSelection;
@@ -83,6 +83,7 @@ export function createSessionLifecycle(ctx) {
 			attachments,
 			mode,
 			automationId, toolDisallowlist, botDeliveryTarget,
+			workflowNotice,
 			modelSelection: selection,
 			modelSelectionExplicit: modelSelectionExplicit && explicitSelection !== undefined,
 			requestedDelivery,

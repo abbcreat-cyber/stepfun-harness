@@ -25,6 +25,15 @@ try {
 }
 const temporary = () => mkdtemp(join(process.env.STEP_TEST_ROOT || tmpdir(), "official-plugins-"));
 
+test("internal host filtering preserves same-name user plugins", async () => {
+  const root = await temporary(), path = join(root, "plugins/node-repl-host");
+  await mkdir(path, { recursive: true });
+  await writeFile(join(path, "step.plugin.json"), JSON.stringify({ id: "node-repl-host", name: "My runtime", mcpServers: {} }));
+  const handlers = createStepPluginHandlers(root, { officialSource: source });
+  assert.ok((await handlers["plugins/list"]()).plugins.some(p => p.id === "node-repl-host@stepcode"));
+  assert.equal((await handlers["plugins/setEnabled"]({ pluginId: "node-repl-host@stepcode", enabled: false })).enabled, false);
+});
+
 test("Office guidance upgrade preserves custom skill text and skips nonofficial or edited notices", async () => {
   const root = await temporary(), target = join(root, "disabled-plugins/pdf"), path = join(target, "skills/pdf/SKILL.md");
   await mkdir(join(target, "skills/pdf"), { recursive: true });
@@ -59,19 +68,24 @@ test(
     const official = before.plugins.filter((p) => p.marketplace === "zcode-plugins-official");
     assert.equal(
       official.length,
-      OFFICIAL_PLUGIN_NAMES.filter((name) => !isUnavailableOfficialPlugin(name)).length,
+      OFFICIAL_PLUGIN_NAMES.filter((name) => !isUnavailableOfficialPlugin(name) && name !== "node-repl-host").length,
     );
     assert.ok(!official.some((plugin) => isUnavailableOfficialPlugin(plugin.id.split("@")[0])));
     for (const name of OFFICIAL_PLUGIN_NAMES.filter(isUnavailableOfficialPlugin))
       await assert.rejects(readFile(join(root, "plugins", name, "step.plugin.json")), { code: "ENOENT" });
     assert.equal(before.diagnostics.length, 0);
     for (const name of OFFICIAL_PLUGIN_NAMES) {
-      if (isUnavailableOfficialPlugin(name)) continue;
+      if (isUnavailableOfficialPlugin(name) || name === "node-repl-host") continue;
       const plugin = official.find((p) => p.id === `${name}@zcode-plugins-official`);
       assert.ok(plugin);
       await readFile(join(plugin.rootPath, ".zcode-plugin/plugin.json"));
       await readFile(join(plugin.rootPath, "step.plugin.json"));
     }
+    await readFile(join(root, "plugins/node-repl-host/step.plugin.json"));
+    assert.ok(!official.some(p => p.id === "node-repl-host@zcode-plugins-official"));
+    const overview = await handlers["plugins/overview"]();
+    assert.ok(!overview.availablePlugins.some(p => p.id === "node-repl-host@zcode-plugins-official"));
+    assert.ok(!(await handlers["plugins/referenceCatalog"]()).plugins.some(p => p.pluginId === "node-repl-host@zcode-plugins-official"));
     const signature = await pluginConfigSignature(root);
     const disabled = await handlers["plugins/setEnabled"]({
       pluginId: "pdf@zcode-plugins-official",

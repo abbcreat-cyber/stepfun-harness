@@ -289,6 +289,12 @@ export function createWorkflowBridge(options) {
       }
       return (await service(sessionId)).list();
     },
+    async isQuestionPending(sessionId, { runId, questionId }) {
+      // 通知只引用问题状态，不加载一个新服务来复活重启前的等待。
+      if (!services.has(sessionId)) return false;
+      const instance = await services.get(sessionId);
+      return instance.active.has(runId) && instance.questions.list(runId).some(q => q.question_id === questionId);
+    },
     snapshot(sessionId) {
       const backgroundWorks = (states.get(sessionId)?.runs ?? [])
         .filter((run) => ["running", "pending"].includes(run.status))

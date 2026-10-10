@@ -3,6 +3,7 @@ import { log } from "./logging.mjs";
 import { expandWorkflowCommand } from "../workflow/catalog.mjs";
 import { acceptedPermissionMode } from "../permission-policy.mjs";
 import { classifyStepSendError } from "../step-send-errors.mjs";
+import { isWorkflowNoticeCurrent } from "./workflow-notices.mjs";
 
 /** 单一操作链串行管理桥接台账；原生插话仍由 Step 负责，不复制第二份可执行队列。 */
 export function createManagedQueue(ctx) {
@@ -14,6 +15,12 @@ export function createManagedQueue(ctx) {
  }
  async function dispatchQueued(entry) {
   if (!entry || entry.state !== "queued") return;
+  // 主代理可能已通过 GetWorkflowRun 回答过问题；旧提醒不能在结束后再启动一轮。
+  if (!await isWorkflowNoticeCurrent(ctx, entry.workflowNotice)) {
+   entry.state = "cancelled";
+   ctx.persistConversation(); ctx.broadcastConversationSnapshot(); scheduleQueueDrain();
+   return;
+  }
   // 发请求前先置 submitted，agent_start 早于 RPC ACK 时仍能按 commandId 正确归属。
   entry.state = "submitted";
   ctx.persistConversation();

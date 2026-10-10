@@ -77,6 +77,8 @@ export function createStepPluginHandlers(
           const { manifest } = declaration;
           if (isMissingBundledPlugin(manifest)) continue;
           if (manifest.stepOfficial && isUnavailableOfficialPlugin(manifest.id)) continue;
+          // 内部宿主由浏览器等能力管理；不能在用户目录暴露一个可独立停用的依赖开关。
+          if (manifest.stepOfficial === true && manifest.id === "node-repl-host") continue;
           const marketplace = manifest.stepOfficial ? OFFICIAL_MARKETPLACE : "stepcode";
           const id = `${safeName(manifest.id)}@${marketplace}`;
           const mcp =

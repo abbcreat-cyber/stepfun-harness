@@ -21,6 +21,7 @@ import { assertHostModelAdmission } from "./model-admission.mjs";
 import { extensionConfigSignature } from "../extension-config-signature.mjs";
 import { desktopAutomationEnvironment } from "../desktop-automation.mjs";
 import { log } from "./logging.mjs";
+import { isWorkflowNoticeCurrent } from "./workflow-notices.mjs";
 
 /** @param {any} ctx 共享桥接状态（options/spawnCommand/primarySession/projectStepEvent 等） */
 export function createClientRuntime(ctx) {
@@ -74,7 +75,10 @@ export function createClientRuntime(ctx) {
 		// 原生 followUp 在 agent_end 后直接续跑，无法先准备 transport；复用现有台账。
 		return ctx.runInputOperation(async () => {
 			if (ctx.shuttingDown || ctx.primarySession?.sessionId !== id) return;
+			const workflowNotice = { runId: result.runId, status: result.status, questionId: result.question_id ?? result.qid };
+			if (!await isWorkflowNoticeCurrent(ctx, workflowNotice)) return;
 			return ctx.admitAndSend({ commandId: nextId("workflow-notice"), kind: "sendText", clientId: "stepcode-workflow",
+				workflowNotice,
 				text: `工作流状态通知：${JSON.stringify(result)}`, modelSelection: ctx.primarySession.modelSelection,
 				automationId: origin?.automationId, toolDisallowlist: origin?.toolDisallowlist, botDeliveryTarget: origin?.botDeliveryTarget,
 				requestedDelivery: "queue", followupMode: "queue" });

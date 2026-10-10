@@ -114,6 +114,7 @@ export class InputLedger {
 			automationId: input.automationId,
 			toolDisallowlist: input.toolDisallowlist,
 			botDeliveryTarget: input.botDeliveryTarget,
+			workflowNotice: input.workflowNotice,
 			modelSelection: input.modelSelection,
 			requestedDelivery: input.requestedDelivery,
 			decision,
