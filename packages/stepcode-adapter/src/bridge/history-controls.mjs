@@ -3,11 +3,13 @@ import { expandWorkflowCommand } from "../workflow/catalog.mjs";
 import { checkpointsFor, checkpointPreview, applyCheckpoints, checkpointChanges } from "../file-checkpoints.mjs";
 
 export function activeEntries(data) {
-  const byId = new Map(data.entries.map(e => [e.id, e])), branch = [];
+  const byId = new Map(data.entries.map(e => [e.id, e])), branch = [], visited = new Set();
   let id = data.leafId;
   while (id) {
     const entry = byId.get(id);
-    if (!entry || branch.includes(entry)) throw new Error("原生会话分支不完整");
+    // 用对象集合检测环，保留旧判定语义，避免长分支每一步都扫描已经访问的前缀。
+    if (!entry || visited.has(entry)) throw new Error("原生会话分支不完整");
+    visited.add(entry);
     branch.push(entry); id = entry.parentId;
   }
   return branch.reverse();
@@ -149,7 +151,8 @@ export function createHistoryControls(ctx) {
         await restored?.undo?.(); throw error;
       }
       ctx.primarySession.stepSessionFile = state.sessionFile;
-      ctx.primarySession.rowHighWater = Math.max(ctx.primarySession.rowHighWater ?? 0, ...ctx.conversationRows.map(r => r.rowId));
+      // 逐行计算避免超长会话展开参数导致原生 fork 成功后抛栈溢出，保留已有高水位。
+      ctx.primarySession.rowHighWater = ctx.conversationRows.reduce((maximum, row) => Math.max(maximum, row.rowId), ctx.primarySession.rowHighWater ?? 0);
       const userIndex = ctx.conversationRows.indexOf(user);
       // 插话共享 turn 标签，fork 只撤回最后一条 user；前一条真实输入不能从 UI 消失。
       const hasEarlierInput = ctx.conversationRows.slice(0, userIndex).some(r => r.kind === "userInput" && r.turnId === user.turnId);
