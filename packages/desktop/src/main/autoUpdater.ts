@@ -1501,6 +1501,9 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
     }
     ipcMain.on(PlatformChannels.QuitAndInstallUpdate, () => openHarnessUpdateWindow?.());
     void harnessUpdates.command({ action: "check" });
+    if (autoUpdatePollTimer) clearInterval(autoUpdatePollTimer);
+    autoUpdatePollTimer = setInterval(() => { void harnessUpdates?.command({ action: "check", target: "desktop" }); }, 30 * 60 * 1000);
+    autoUpdatePollTimer.unref();
     return;
   }
   ipcMain.handle(PlatformChannels.ManageHarnessUpdate, () => null);

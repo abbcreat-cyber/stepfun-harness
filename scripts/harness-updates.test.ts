@@ -6,6 +6,7 @@ import { HarnessUpdates, HARNESS_UPDATE_FEED } from "../packages/desktop/src/mai
 import { HarnessPreparedDownload } from "../packages/desktop/src/main/harnessPreparedDownload.js";
 import { gzipSync } from "node:zlib";
 import { CancellationToken as DownloadCancellationToken } from "electron-updater";
+import { probeInstallerConnection, type InstallerRequester } from "../packages/desktop/src/main/harnessInstallerProbe.js";
 
 class FakeUpdater extends EventEmitter {
   feed: unknown; checks = 0; downloads = 0;
@@ -91,7 +92,7 @@ test("prepared blockmap is reused only for the exact URL and download hook is re
   const calls: string[] = [];
   const bytes = gzipSync(JSON.stringify({ version: "2", files: [] }));
   const executor = { downloadToBuffer: async (url: URL) => { calls.push(url.href); return bytes; } };
-  const prepare = new HarnessPreparedDownload({ httpExecutor: executor } as unknown as AppUpdater);
+  const prepare = new HarnessPreparedDownload({ httpExecutor: executor } as unknown as AppUpdater, async () => {});
   const info = { version: "1.0.3", files: [{ url: "StepFun-Harness-1.0.3-win-x64.exe", sha512: "fixture" }], path: "fixture", sha512: "fixture", releaseDate: "2026-10-09" };
   await prepare.prepare(info); await prepare.prepare(info); assert.equal(calls.length, 1);
   const original = executor.downloadToBuffer, restore = prepare.usePrepared();
@@ -100,4 +101,38 @@ test("prepared blockmap is reused only for the exact URL and download hook is re
   assert.equal(calls.length, 1);
   await fetcher.downloadToBuffer(new URL("https://example.com/other.blockmap"), { cancellationToken: new DownloadCancellationToken() });
   assert.equal(calls.length, 2); restore(); assert.equal(executor.downloadToBuffer, original);
+});
+
+test("installer probe accepts real EXE bytes, aborts ignored ranges and rejects HTML or wrong sizes", async () => {
+  for (const fixture of [
+    { status: 206, headers: { "content-range": "bytes 0-1023/4096" }, bytes: Buffer.from("MZ"), valid: true },
+    { status: 200, headers: { "content-length": "4096" }, bytes: Buffer.from("MZlarge stream"), valid: true },
+    { status: 200, headers: { "content-length": "4096" }, bytes: Buffer.from("<html>"), valid: false },
+    { status: 206, headers: { "content-range": "bytes 0-1023/9000" }, bytes: Buffer.from("MZ"), valid: false },
+    { status: 503, headers: {}, bytes: Buffer.from("bad"), valid: false },
+  ]) {
+    let aborted = false;
+    const executor = { createRequest(options: { headers: { Range: string } }, callback: (response: unknown) => void) {
+      assert.equal(options.headers.Range, "bytes=0-1023");
+      const request = Object.assign(new EventEmitter(), { abort() { aborted = true; }, end() {
+        const response = Object.assign(new EventEmitter(), { statusCode: fixture.status, headers: fixture.headers });
+        callback(response); response.emit("data", fixture.bytes); response.emit("end");
+      } });
+      return request;
+    } };
+    const probe = probeInstallerConnection(executor as unknown as InstallerRequester, new URL("https://example.com/setup.exe"), 4096);
+    if (fixture.valid) await probe; else await assert.rejects(probe);
+    assert.equal(aborted, true);
+  }
+});
+
+test("failed installer connection never exposes an update button and the next check can retry", async () => {
+  const fake = new FakeUpdater(); let fail = true;
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, { desktop: "1.0.5", step: "0.1.3" }, "D:/Temp/harness-updater-test", async () => {}, () => {},
+    { prepareDesktop: async () => { if (fail) throw new Error("installer unreachable"); } });
+  await updates.command({ action: "check", target: "desktop" }); fake.finishCheck(); await settle();
+  assert.equal(updates.snapshot().desktop.state.kind, "idle");
+  await assert.rejects(updates.command({ action: "download", target: "desktop" }), /No verified/);
+  fail = false; await updates.command({ action: "check", target: "desktop" }); fake.finishCheck(); await settle();
+  assert.equal(updates.snapshot().desktop.state.kind, "update-available");
 });
