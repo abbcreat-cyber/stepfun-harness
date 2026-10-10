@@ -65,7 +65,10 @@ export type AssistantPreviewCard =
     };
 
 export interface AssistantPreviewCardFileStatService {
-  checkFilesExist(params: { paths: string[] }): Promise<Array<{ path: string; exists: boolean }>>;
+  checkFilesExist(params: {
+    paths: string[];
+    refresh?: boolean;
+  }): Promise<Array<{ path: string; exists: boolean }>>;
 }
 
 const LOCALHOST_URL_RE =

@@ -216,20 +216,28 @@ interface WorkspaceFileIndex {
   candidates?: ReturnType<typeof buildHostFileSearchCandidates>;
 }
 
-async function filterCurrentSearchEntries(entries: WorkspaceFileEntry[]): Promise<WorkspaceFileEntry[]> {
+async function filterCurrentSearchEntries(
+  entries: WorkspaceFileEntry[],
+): Promise<WorkspaceFileEntry[]> {
   const current: WorkspaceFileEntry[] = [];
   // 只核对已匹配的有界候选，不重扫整个工作区；保持顺序且限制 IO 并发。
   for (let offset = 0; offset < entries.length; offset += WORKSPACE_FILE_LIST_SCAN_CONCURRENCY) {
     const batch = entries.slice(offset, offset + WORKSPACE_FILE_LIST_SCAN_CONCURRENCY);
-    const valid = await Promise.all(batch.map(async entry => {
-      try {
-        const info = await stat(entry.path);
-        return entry.type === "directory" ? info.isDirectory() : info.isFile();
-      } catch (error) {
-        if (isSkippableWorkspaceFileListError(error) || (error as NodeJS.ErrnoException).code === "ENOTDIR") return false;
-        throw error;
-      }
-    }));
+    const valid = await Promise.all(
+      batch.map(async (entry) => {
+        try {
+          const info = await stat(entry.path);
+          return entry.type === "directory" ? info.isDirectory() : info.isFile();
+        } catch (error) {
+          if (
+            isSkippableWorkspaceFileListError(error) ||
+            (error as NodeJS.ErrnoException).code === "ENOTDIR"
+          )
+            return false;
+          throw error;
+        }
+      }),
+    );
     for (const [index, entry] of batch.entries()) if (valid[index]) current.push(entry);
   }
   return current;
@@ -253,7 +261,12 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
   const workspaceFileListCache = new Map<string, WorkspaceFileIndex>();
   const pendingFileExistenceChecks = new Map<string, Promise<boolean>>();
 
-  const checkFileExists = async (path: string): Promise<boolean> => {
+  const checkFileExists = async (path: string, refresh = false): Promise<boolean> => {
+    // 生成前的负缓存可能覆盖生成后的真实文件；产物校验直接读取，不复用旧请求，也不改写TTL缓存。
+    if (refresh)
+      return stat(path)
+        .then((info) => info.isFile())
+        .catch(() => false);
     const cached = fileExistenceCache.get(path);
     if (cached !== undefined) {
       return cached;
@@ -426,6 +439,7 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
     },
     async checkFilesExist(params: {
       paths: string[];
+      refresh?: boolean;
     }): Promise<Array<{ path: string; exists: boolean }>> {
       if (params.paths.length > FILE_EXISTENCE_BATCH_LIMIT) {
         throw new Error(
@@ -437,7 +451,7 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
       return Promise.all(
         params.paths.map(async (path) => ({
           path,
-          exists: await checkFileExists(path),
+          exists: await checkFileExists(path, params.refresh === true),
         })),
       );
     },
@@ -628,7 +642,9 @@ export function createFileService(options: CreateFileServiceOptions = {}): IFile
       // 淘汰过期结果。只补扫一次，扫描期间再次变化的路径仅过滤，不循环刷新。
       const fresh = await ensureWorkspaceFileIndex(params.rootPath, params.workspaceIdentity, true);
       fresh.candidates ??= buildHostFileSearchCandidates(fresh.packed, params.rootPath);
-      return filterCurrentSearchEntries(await searchHostFileCandidates(await fresh.candidates, params.query, limit));
+      return filterCurrentSearchEntries(
+        await searchHostFileCandidates(await fresh.candidates, params.query, limit),
+      );
     },
     async listWorkspaceFilesLength(params: { rootPath: string }): Promise<number> {
       const { packed } = await ensureWorkspaceFileIndex(params.rootPath);

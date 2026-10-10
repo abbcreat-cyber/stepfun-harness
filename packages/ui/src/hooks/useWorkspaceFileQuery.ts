@@ -14,17 +14,22 @@ export function useWorkspaceFileQuery(
 ) {
   const { fileService } = useServices();
   const scope = useMemo(
-    () => ({ error: null as Error | null, lastMissQuery: null as string | null }),
+    () => ({ pending: Promise.resolve(), lastMissQuery: null as string | null }),
     [fileService, workspacePath, workspaceIdentity, enabled],
   );
   const [result, setResult] = useState<{
-    scope: typeof scope; query: string; limit: number; entries: WorkspaceFileEntry[]; loading: boolean;
+    scope: typeof scope;
+    query: string;
+    limit: number;
+    entries: WorkspaceFileEntry[];
+    loading: boolean;
+    error: Error | null;
   } | null>(null);
 
   useEffect(() => {
-    if (!enabled || scope.error) return;
+    if (!enabled) return;
     let active = true;
-    setResult({ scope, query, limit, entries: [], loading: true });
+    setResult({ scope, query, limit, entries: [], loading: true, error: null });
     const params = { rootPath: workspacePath, workspaceIdentity, query, limit };
     const search = async () => {
       try {
@@ -37,21 +42,35 @@ export function useWorkspaceFileQuery(
           entries = await fileService.searchWorkspaceFiles({ ...params, refresh: true });
           if (!active) return;
         }
-        setResult({ scope, query, limit, entries, loading: false });
+        setResult({ scope, query, limit, entries, loading: false, error: null });
       } catch (error) {
         if (!active) return;
-        scope.error = error instanceof Error ? error : new Error(String(error));
-        setResult({ scope, query, limit, entries: [], loading: false });
+        // 失败只属于本次查询，不能让面板在下一次输入后仍永久拒绝检索。
+        setResult({
+          scope,
+          query,
+          limit,
+          entries: [],
+          loading: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
       }
     };
-    void search();
-    return () => { active = false; };
+    // 同一作用域只执行一个在途查询；旧输入收口后跳过已失效输入，避免连续键入堆积 RPC。
+    const run = async () => {
+      if (active) await search();
+    };
+    scope.pending = scope.pending.then(run, run);
+    return () => {
+      active = false;
+    };
   }, [enabled, fileService, workspacePath, workspaceIdentity, query, limit, scope]);
 
-  const current = enabled && result?.scope === scope && result.query === query && result.limit === limit;
+  const current =
+    enabled && result?.scope === scope && result.query === query && result.limit === limit;
   return {
     entries: current ? result.entries : EMPTY_ENTRIES,
-    loading: enabled && !scope.error && (!current || result.loading),
-    error: enabled ? scope.error : null,
+    loading: enabled && (!current || result.loading),
+    error: current ? result.error : null,
   };
 }

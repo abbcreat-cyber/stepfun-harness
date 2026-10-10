@@ -23,7 +23,11 @@ export interface IFileService {
   searchWorkspaceFiles(params: WorkspaceFileSearchParams): Promise<WorkspaceFileEntry[]>;
   readdir(params: { path: string; includeHidden?: boolean }): Promise<FileEntry[]>;
   stat(params: { path: string }): Promise<FileStat>;
-  checkFilesExist(params: { paths: string[] }): Promise<Array<{ path: string; exists: boolean }>>;
+  /** refresh 用于产物卡片即时验证，绕过启发式缓存与旧在途检查。 */
+  checkFilesExist(params: {
+    paths: string[];
+    refresh?: boolean;
+  }): Promise<Array<{ path: string; exists: boolean }>>;
   resolvePath(params: { path: string }): Promise<string>;
   ensureConversationWorkspace(): Promise<{
     path: string;

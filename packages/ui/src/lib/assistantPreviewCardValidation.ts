@@ -51,10 +51,15 @@ export async function resolveValidatedAssistantPreviewCards(
   }
 
   const candidates = cards.slice(0, ASSISTANT_PREVIEW_CARD_CANDIDATE_LIMIT);
-  const paths = candidates
-    .map(getAssistantPreviewCardFilePath)
-    .filter((path): path is string => path !== null);
-  const results = await fileService.checkFilesExist({ paths });
+  const paths = [
+    ...new Set(
+      candidates
+        .map(getAssistantPreviewCardFilePath)
+        .filter((path): path is string => path !== null),
+    ),
+  ];
+  // 此处校验已生成产物，不能复用生成前“文件不存在”的分钟级负缓存。
+  const results = await fileService.checkFilesExist({ paths, refresh: true });
   const existingPaths = new Set(
     results.filter((result) => result.exists).map((result) => result.path),
   );
