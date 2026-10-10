@@ -3,6 +3,37 @@ import { fileURLToPath } from "node:url";
 export const QUESTIONNAIRE_PREFIX = "stepcode:questionnaire:v1:";
 const MAX_ENVELOPE = 65536;
 
+// 原生 0.1.3 声明没有多选字段，模型只能把“可多选”写进题干；
+// 桌面已有多选渲染和答案协议，必须同时向模型公开同一能力。
+export const desktopQuestionnaireParameters = {
+  type: "object",
+  properties: {
+    reason: { type: "string", description: "Why the user's decision is needed." },
+    questions: {
+      type: "array", minItems: 1, maxItems: 12,
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Stable question identifier." },
+          label: { type: "string" },
+          question: { type: "string", minLength: 1 },
+          reason: { type: "string" },
+          multiSelect: { type: "boolean", description: "Set true when the user can select multiple options. Default false (single choice)." },
+          allow_freeform: { type: "boolean", description: "Allow a custom text answer. Default true; required when there are no options." },
+          options: { type: "array", maxItems: 8, items: { type: "object", properties: {
+            label: { type: "string", minLength: 1 }, value: { type: "string" }, description: { type: "string" },
+          }, required: ["label"], additionalProperties: false } },
+        },
+        required: ["question"], additionalProperties: false,
+      },
+    },
+  },
+  required: ["questions"], additionalProperties: false,
+};
+// 保留原生单题简写，历史工具调用和直接集成不必迁移成 questions 数组。
+Object.assign(desktopQuestionnaireParameters.properties, desktopQuestionnaireParameters.properties.questions.items.properties);
+desktopQuestionnaireParameters.required = [];
+
 export function normalizeClarification(input = {}) {
   const raw = Array.isArray(input.questions) ? input.questions : input.question ? [input] : [];
   if (!raw.length || raw.length > 12) throw new Error("提问需要 1–12 个问题");

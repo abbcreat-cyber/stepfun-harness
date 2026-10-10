@@ -31,6 +31,24 @@ const input = {
   ],
 };
 
+test("RPC registration exposes multi-choice and keeps single-question shorthand; TUI is unchanged", async () => {
+  const handlers = new Map(), tools = [];
+  desktopQuestionnaire({ on: (name, handler) => handlers.set(name, handler), registerTool: tool => tools.push(tool) });
+  handlers.get("session_start")({}, { mode: "interactive" });
+  assert.equal(tools.length, 0);
+  handlers.get("session_start")({}, { mode: "rpc" });
+  assert.equal(tools.length, 1);
+  const tool = tools[0];
+  assert.equal(tool.executionMode, "sequential");
+  assert.ok(tool.parameters.properties.multiSelect);
+  assert.ok(tool.parameters.properties.questions.items.properties.multiSelect);
+  const result = await tool.execute("one", { question: "选择？", multiSelect: true, options: [{ label: "甲", value: "a" }, { label: "乙", value: "b" }] }, null, null,
+    { ui: { input: async () => JSON.stringify({ action: "accept", content: { answer: ["a", "b"] } }) } });
+  assert.equal(JSON.parse(result.content[0].text).answers.q1, "甲, 乙");
+  const cancelled = await tool.execute("two", { question: "备注？" }, null, null, { ui: { input: async () => undefined } });
+  assert.equal(cancelled.details.cancelled, true);
+});
+
 test("same question text keeps distinct id answers through the UI renderer", async () => {
   const { register } = await import("tsx/esm/api");
   register();
@@ -69,6 +87,7 @@ test("future native RPC answers and explicit cancellation never open a second qu
   let handler;
   desktopQuestionnaire({
     on(name, fn) {
+      if (name === "session_start") return;
       assert.equal(name, "tool_result");
       handler = fn;
     },
@@ -195,6 +214,7 @@ test(
   "real Step RPC: native clarification blocks the model until desktop answers and final transcript receives them",
   { skip: !process.env.STEP_TEST_CLI, timeout: 60000 },
   async () => {
+    const nativeInput = { questions: [{ ...input.questions[0], multiSelect: true }, input.questions[1]] };
     const root = await mkdtemp(join(process.env.STEP_TEST_ROOT || tmpdir(), "question-rpc-"));
     const agent = join(root, "agent");
     await mkdir(agent, { recursive: true });
@@ -225,7 +245,7 @@ test(
               index: 0,
               id: "question-1",
               type: "function",
-              function: { name: "clarify_user", arguments: JSON.stringify(input) },
+              function: { name: "clarify_user", arguments: JSON.stringify(nativeInput) },
             },
           ],
         });
@@ -307,16 +327,21 @@ test(
       const pending = bridge.snapshot("s").pendingInteractions[0];
       assert.ok(pending, client.getStderr?.() || client.stderrText);
       assert.equal(requests.length, 1);
+      const declaration = requests[0].tools.find(tool => tool.function?.name === "clarify_user")?.function;
+      const fields = declaration?.parameters?.properties?.questions?.items?.properties ?? {};
+      assert.ok(fields.multiSelect, `模型工具声明缺少 multiSelect，实际字段：${Object.keys(fields).join(", ")}`);
+      assert.equal(pending.payload.questions[0].multiSelect, true);
       assert.ok(!events.some((e) => e.type === "agent_settled"));
       assert.ok(!events.some((e) => e.type === "tool_execution_end"));
       bridge.resolve("s", pending.interactionId, {
         action: "accept",
-        content: { answer_0: "chips", answer_1: "每天 500 字" },
+        content: { answer_0: ["chips", "energy"], answer_1: "每天 500 字" },
       });
       await completed;
       assert.equal(requests.length, 2);
       assert.equal(events.find((e) => e.type === "tool_execution_end").isError, false);
       assert.match(await client.getLastAssistantText(), /chips/);
+      assert.match(await client.getLastAssistantText(), /energy/);
       assert.match(await client.getLastAssistantText(), /每天 500 字/);
       assert.equal(rows.find((row) => row.toolCallId === "question-1").toolName, "AskUserQuestion");
     } finally {
