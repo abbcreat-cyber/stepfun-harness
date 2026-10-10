@@ -1,0 +1,34 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
+import { projectedClient, httpFixture } from "./provider-wire-fixtures.mjs";
+import { prepareProviderRequestOptions } from "../src/provider-request-options.mjs";
+
+test("real Step compact persists a summary and abort actually cancels a running summary request", { skip: !process.env.STEP_TEST_CLI, timeout: 30000 }, async t => {
+  const http = await httpFixture("openai-chat-completions"), f = await projectedClient("openai-chat-completions", http.baseUrl, { optionSpecs: { reasoningLevel: { values: ["low"], map: '{"wire_reasoning":reasoningLevel}' } } });
+  t.after(async () => { await f.client.stop(); await http.close(); await rm(f.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
+  f.client.options.command = f.client.options.command.filter(value => value !== "--no-session");
+  f.client.options.communicationMode = "required";
+  await f.client.start(); await f.client.setModel(f.providerId, f.modelId);
+  await f.client.request({ type: "set_auto_compaction", enabled: false });
+  http.set({ kind: "text", text: "OK", usage: { prompt_tokens: 50000 } });
+  let sequence = 0;
+  const prepare = () => prepareProviderRequestOptions(f.client, { providerId: f.providerId, modelId: f.modelId, options: { reasoningLevel: "low" }, requestId: `compact-native-${++sequence}` });
+  const ask = async text => { await prepare(); await f.client.promptAndWait(text); };
+  await ask("记住验证码7392。");
+  await ask("测试上下文。".repeat(30000)); await ask("确认");
+  http.set({ kind: "text", text: "Summary: code 7392." });
+  await prepare(); const response = await f.client.request({ type: "compact" }, { timeoutMs: 15000 });
+  assert.equal(response.success, true, response.error); assert.match(response.data.summary, /7392/);
+  assert.equal(http.requests.at(-1).body.wire_reasoning, "low");
+  assert.ok((await f.client.getEntries()).entries.some(e => e.type === "compaction"));
+  http.set({ kind: "text", text: "NEXT", usage: { prompt_tokens: 50000 } });
+  await ask("下一段上下文。".repeat(30000));
+  http.set({ kind: "slow", text: "PARTIAL_SUMMARY" });
+  await prepare(); const pending = f.client.request({ type: "compact" }, { timeoutMs: 15000 });
+  for (let i = 0; i < 100 && !(await f.client.getState()).isCompacting; i++) await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal((await f.client.getState()).isCompacting, true);
+  await f.client.abort(); const cancelled = await pending;
+  assert.equal(cancelled.success, false); assert.match(cancelled.error, /cancelled/);
+  assert.equal((await f.client.getState()).isCompacting, false);
+});

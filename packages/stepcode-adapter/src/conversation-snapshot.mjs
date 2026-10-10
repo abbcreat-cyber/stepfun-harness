@@ -7,8 +7,7 @@
  *
  * P0-02 新增可选参数：inputRouting / queue / followupMode；能力对齐轮（2026-10-05）
  * 再增 modelSelection/thoughtLevel（config 反映实际选型），availability 以
- * docs/step-capability-matrix.md 为唯一事实源（fork/compact/queueEdit/
- * sendQueuedNow/pauseGoal/resumeGoal 如实禁用；防回退见 suites/capability-consistency.mjs）。
+ * 队列与 compact 已接通；其余能力按实际处理器声明，防回退见 suites/capability-consistency.mjs。
  *
  * Derives from zai-org/ZCode (https://github.com/zai-org/ZCode), Apache-2.0.
  * Community-maintained adapter; not affiliated with or endorsed by Z.ai.
@@ -61,12 +60,12 @@ export function makeConversationSnapshot({
 			apiRetry: null,
 		},
 		availability: {
-			// 能力诚实（docs/step-capability-matrix.md 唯一事实源；spec §5）：
+			// 能力声明必须对应实际处理器；压缩契约见 docs/specs/manual-compaction.md。
 			// allowed=true 的键必须有 bin/zcode-bridge-session.mjs 的 v4/command 处理分支
-			// （suites/capability-consistency.mjs 静态断言防回退）。forkAssistant/compact
+			// （suites/capability-consistency.mjs 静态断言防回退）。forkAssistant
 			// 无处理器分支——声明可用会让宿主发出必被 -32602 拒绝的命令，属协议级误报。
 			fork: { allowed: false, reasonCode: "stepcode.community.forkNotWired" },
-			compact: { allowed: false, reasonCode: "stepcode.community.compactNotWired" },
+			compact: { allowed: true },
 			// switchModelConfig/setFollowupMode 有真实处理器（模型经 set_model、
 			// 档位经 set_thinking_level、跟进模式进 primarySession.followupMode）。
 			switchModelConfig: { allowed: true },

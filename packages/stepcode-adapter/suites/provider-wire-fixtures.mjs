@@ -247,6 +247,11 @@ export async function httpFixture(protocol) {
         return;
       }
       const events = textEvents(protocol, action.text);
+      // 压缩验收需要真实形状的高 token 用量，默认夹具仍保持原有小数值。
+      if (action.usage && protocol === protocols[0]) {
+        const event = events.find(item => item?.usage);
+        if (event) event.usage = { ...event.usage, ...action.usage };
+      }
       await sse(
         res,
         protocol,

@@ -154,6 +154,9 @@ export async function handleCommand(cmd) {
 			return successResponse(id, "follow_up");
 		}
 
+		case "compact": {
+			return successResponse(id, "compact", { summary: "MOCK_COMPACTION", tokensBefore: 20000, estimatedTokensAfter: 4000 });
+		}
 		case "abort": {
 			const currentRun = runtime.currentRun;
 			if (currentRun) {

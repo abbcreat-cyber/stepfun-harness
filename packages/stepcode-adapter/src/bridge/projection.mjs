@@ -130,6 +130,8 @@ export function createProjection(ctx) {
 	/** Step 事件在 v4 通道实时增量投影；终态快照用于恢复与持久化。 */
 	function projectStepEvent(event) {
 		if (!ctx.primarySession || !event || typeof event.type !== "string") return;
+		// 手动压缩以 compact RPC 的完成结果结算，不让原生通用终态提前释放维护槽位。
+		if (ctx.activeCompaction && ["agent_start", "agent_settled", "agent_end", "step_client_failed"].includes(event.type)) return;
 		try {
 			if (event.type === "step_client_failed") {
 				if (!ctx.turnBusy) return;

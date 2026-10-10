@@ -37,6 +37,18 @@ export function createProviderRequestOptions(pi, { bindings, key, current, gener
     signalCleanup?.();
     signalCleanup = undefined;
   });
+  // 手动压缩不触发 before_agent_start；只接管该次已准备的选项，自动压缩沿用原轮次。
+  pi.on("session_before_compact", event => {
+    if (event.reason === "manual" && prepared) {
+      active = { ...prepared, maintenance: "compact" }; prepared = undefined;
+    }
+  });
+  const finishCompaction = () => {
+    if (active?.maintenance !== "compact") return;
+    active = undefined; signalCleanup?.(); signalCleanup = undefined;
+  };
+  pi.on("session_compact", finishCompaction);
+  pi.on("session_compact_failed", finishCompaction);
   pi.on("session_switch", () => {
     clear();
   });

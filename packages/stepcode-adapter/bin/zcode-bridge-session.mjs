@@ -65,6 +65,7 @@ import { createSessionLifecycle } from "../src/bridge/session-lifecycle.mjs";
 import { createSessionMethods } from "../src/bridge/methods-session.mjs";
 import { createV4Methods } from "../src/bridge/methods-v4.mjs";
 import { createManagedQueue } from "../src/bridge/managed-queue.mjs";
+import { createCompaction } from "../src/bridge/compaction.mjs";
 
 const pkgRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -216,6 +217,7 @@ Object.assign(ctx, createProjection(ctx));
 Object.assign(ctx, createClientRuntime(ctx));
 Object.assign(ctx, createSessionLifecycle(ctx));
 Object.assign(ctx, createManagedQueue(ctx));
+Object.assign(ctx, createCompaction(ctx));
 const { respondResult, respondError } = ctx;
 
 // ── 方法处理器 ──────────────────────────────────────────────────────────────
@@ -342,6 +344,12 @@ const methodHandlers = {
 			case "cancelBackgroundWork": {
 				(await ctx.workflowBridge.service(envelope.sessionId)).cancel(envelope.payload.workId);
 				return rememberAck(makeCommandAck({commandId, revisionAtDecision}));
+			}
+			case "compact": {
+				if (envelope.sessionId !== ctx.primarySession?.sessionId) await ctx.restoreSession(envelope.sessionId);
+				const entry = ctx.admitCompact(commandId);
+				if (entry.duplicate) return rememberAck({ commandId, revisionAtDecision, status: "rejected", reasonCode: "compactOperationLock" });
+				return rememberAck(makeCommandAck({ commandId, revisionAtDecision, result: { type: "inputAccepted", inputId: entry.commandId, delivery: entry.decision.delivery } }));
 			}
 			case "sendText": {
 				if (envelope.sessionId && envelope.sessionId !== ctx.primarySession?.sessionId) await ctx.restoreSession(envelope.sessionId);
@@ -519,7 +527,7 @@ attachJsonlLineReader(process.stdin, (line) => {
 		if (frame.id !== undefined) {
 			// 准入/队列变更同链串行，避免取消 ACK 后已经选中的队首继续执行。
 			// 交互回答与 Host 回执保持独立，否则等待权限的任务会死锁。
-			const serializedTypes = new Set(["createSession", "sendText", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
+			const serializedTypes = new Set(["createSession", "sendText", "compact", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
 			if ((frame.method === "v4/command" && serializedTypes.has(frame.params?.type)) || ["session/create", "session/send", "session/stop", "session/setModel", "session/setThoughtLevel"].includes(frame.method)) {
 				void ctx.runInputOperation(() => handleRequestLine(frame));
 			} else void handleRequestLine(frame);

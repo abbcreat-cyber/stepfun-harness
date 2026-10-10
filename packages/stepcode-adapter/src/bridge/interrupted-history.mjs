@@ -17,6 +17,7 @@ export function settleInterruptedHistory(saved) {
       delete row.interactionId;
     }
     if (row.state === "streaming") row.state = "interrupted";
+    if (row.kind === "timelineMarker" && row.marker?.type === "compact" && row.marker.status === "running") row.marker.status = "cancelled";
   }
   return saved;
 }

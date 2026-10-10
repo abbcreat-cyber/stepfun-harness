@@ -9,7 +9,7 @@
  * default 分支保持 -32602 如实拒绝。
  * 活体部分（mock 底座）：switchModelConfig/setThoughtLevel 真实生效与如实报错、
  * session/list 真实列表、mcp/list 如实 disconnected、session/messages|events
- * -32601、v4/connection/flow 背压真实执行、fork/compact 如实禁用。
+ * -32601、v4/connection/flow 背压真实执行、fork 禁用与 compact 接入。
  */
 
 import { test } from "node:test";
@@ -120,10 +120,10 @@ test("capability：allowed=false 必带非空 reasonCode（可理解的禁用说
 	}
 });
 
-test("capability：队列已接通，fork/compact/pauseGoal/resumeGoal 仍如实禁用", () => {
+test("capability：队列与 compact 已接通，fork/pauseGoal/resumeGoal 仍如实禁用", () => {
 	const availability = currentAvailability();
 	assert.equal(availability.fork.allowed, false);
-	assert.equal(availability.compact.allowed, false);
+	assert.equal(availability.compact.allowed, true);
 	assert.equal(availability.queueEdit.allowed, true);
 	assert.equal(availability.sendQueuedNow.allowed, true);
 	assert.equal(availability.pauseGoal.allowed, false);
@@ -320,7 +320,7 @@ test("capability：v4/connection/flow 背压真实执行（saturated 停投递�
 	}
 });
 
-test("capability：forkAssistant/compact 命令如实现状是 -32602（与禁用声明一致）", async () => {
+test("capability：forkAssistant 仍禁用，compact 接受并产生成功标记", async () => {
 	const b = launchBridge();
 	try {
 		await createAndSubscribe(b, "cap-fork", 1);
@@ -337,10 +337,11 @@ test("capability：forkAssistant/compact 命令如实现状是 -32602（与禁�
 			type: "compact",
 			payload: {},
 		});
-		assert.equal(compact.error?.code, -32602);
+		assert.equal(compact.result?.status, "accepted");
+		await b.waitFor(() => lastSnapshot(b, "cap-fork")?.rows.window.some(r => r.kind === "timelineMarker" && r.marker.type === "compact" && r.marker.status === "success"));
 		const snapshot = lastSnapshot(b, "cap-fork");
 		assert.equal(snapshot.availability.fork.allowed, false);
-		assert.equal(snapshot.availability.compact.allowed, false);
+		assert.equal(snapshot.availability.compact.allowed, true);
 	} finally {
 		b.child.kill();
 	}

@@ -15,6 +15,7 @@ export function createManagedQueue(ctx) {
  }
  async function dispatchQueued(entry) {
   if (!entry || entry.state !== "queued") return;
+  if (entry.kind === "compact") return ctx.dispatchCompact(entry);
   // 主代理可能已通过 GetWorkflowRun 回答过问题；旧提醒不能在结束后再启动一轮。
   if (!await isWorkflowNoticeCurrent(ctx, entry.workflowNotice)) {
    entry.state = "cancelled";
@@ -62,13 +63,14 @@ export function createManagedQueue(ctx) {
  }
  function scheduleQueueDrain() {
   void runInputOperation(async () => {
-   if (!ctx.primarySession || ctx.turnBusy || ctx.ledger.frozen) return;
+   if (ctx.shuttingDown || !ctx.primarySession || ctx.turnBusy || ctx.ledger.frozen) return;
    const entry = ctx.ledger.managedQueued()[0];
    if (entry) await dispatchQueued(entry);
   }).catch(error => log(`queue dispatch failed: ${error.message}`));
  }
  async function stopCurrentTurn() {
   ctx.ledger.holdAll("stopped");
+  if (ctx.activeCompaction) { await ctx.stopCompaction(); return; }
   if (ctx.streamProjection) {
    ctx.streamProjection.outcome = "completedInterrupted";
    ctx.streamProjection.interruptedByUser = true;

@@ -91,7 +91,7 @@ export function createSessionLifecycle(ctx) {
 			busy: ctx.turnBusy,
 		});
 		const currentSelection = ctx.primarySession.modelSelection;
-		if (entry.decision.route === "steer" && (automationId || toolDisallowlist?.length || botDeliveryTarget || selection?.providerId !== currentSelection?.providerId || selection?.modelId !== currentSelection?.modelId || JSON.stringify(selection?.options ?? {}) !== JSON.stringify(currentSelection?.options ?? {}))) {
+		if (entry.decision.route === "steer" && (ctx.activeCompaction || automationId || toolDisallowlist?.length || botDeliveryTarget || selection?.providerId !== currentSelection?.providerId || selection?.modelId !== currentSelection?.modelId || JSON.stringify(selection?.options ?? {}) !== JSON.stringify(currentSelection?.options ?? {}))) {
 			// 忙轮只能携带同一已生效选择；新选择留在现有台账，空闲后再落定。
 			entry.decision = { route: "followUp", delivery: "queue", fallbackReasonCode: "stepcode.community.optionsDeferred" };
 		}
