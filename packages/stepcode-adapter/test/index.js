@@ -113,6 +113,8 @@ import "../suites/provider-wire-final-host.mjs";
 import "../suites/desktop-command-deadline.mjs";
 import "../suites/desktop-command-deadline-native.mjs";
 import "../suites/desktop-input-context.mjs";
+import "../suites/runtime-notice-context.mjs";
+import "../suites/runtime-notice-context-native.mjs";
 import "../suites/desktop-plugin-context.mjs";
 import "../suites/desktop-input-context-native.mjs";
 import "../suites/assistant-communication-native.mjs";

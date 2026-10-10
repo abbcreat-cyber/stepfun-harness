@@ -3,6 +3,7 @@ import { desktopPluginReferenceContext, isBarePluginRequest } from "../desktop-p
 import { withCommunicationPolicy } from "../assistant-communication.mjs";
 import { registerAssistantOpeningHook } from "../assistant-opening-hook.mjs";
 import { readBuiltinHooks, FIRST_PRINCIPLES_REMINDER } from "../builtin-hooks.mjs";
+import { orderRuntimeNotices, withDesktopInputOrigin } from "../runtime-notice-context.mjs";
 
 /** 给模型真实产品工具边界，并在执行前阻止把常驻规则变成烧迭代的工作目标。 */
 export default function desktopTaskContracts(pi) {
@@ -13,7 +14,7 @@ export default function desktopTaskContracts(pi) {
   let rejectedTargetSearches = 0;
   pi.on("context", event => {
     const latest = pluginDiscoveryContext ? event.messages.findLast(message => message.customType === "desktop-selected-plugin") : undefined;
-    return { messages: event.messages.filter(message => message.customType !== "desktop-selected-plugin" || message === latest) };
+    return { messages: orderRuntimeNotices(event.messages.filter(message => message.customType !== "desktop-selected-plugin" || message === latest)) };
   });
   pi.on("tool_result", event => {
     if (event.toolName !== "find_tools" || !pluginDiscoveryContext) return;
@@ -61,7 +62,7 @@ export default function desktopTaskContracts(pi) {
     ...(activated ? { message: { customType: "desktop-selected-plugin", display: false,
       content: `当前工作区：${ctx?.cwd ?? process.cwd()}。plugin:// 只选择插件，不是文件附件。${activated}` } } : {}),
     systemPrompt:
-      withCommunicationPolicy(event.systemPrompt) +
+      withDesktopInputOrigin(withCommunicationPolicy(event.systemPrompt)) +
       (hookSettings["first-principles"] ? FIRST_PRINCIPLES_REMINDER : "") +
       (hookSettingsError ? `\n${hookSettingsError}` : "") +
       "\n\n桌面工具：定时任务使用当前 cron 工具。run_command 前台命令省略 timeout_ms 时为 60000 毫秒，长任务显式设置期限，长期服务使用 run_in_background。文件查找优先专用搜索工具；不为普通问答核查插件或规则的安装。" +

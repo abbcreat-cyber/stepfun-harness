@@ -36,7 +36,7 @@ pi.on('before_agent_start', () => ({message:{customType:'first-principles',displ
   // 复现旧 SDK 扩展接线：隐藏 custom 提醒在 HTTP 中成为最后一个 user 消息。
   client = new StepCodeRpcClient({
     command: [process.env.STEP_TEST_CLI, "--mode", "rpc", "--no-extensions", "--extension", oldHook],
-    cwd: f.root, env: f.env,
+    cwd: f.root, env: { ...f.env, STEPCODE_TASK_MODE: "native-baseline" },
   });
   await client.start(); await client.setModel(f.providerId, f.modelId);
   http.set({ kind: "text", text: "LOCAL_BASELINE_REPLY" });
@@ -44,10 +44,11 @@ pi.on('before_agent_start', () => ({message:{customType:'first-principles',displ
   await client.promptAndWait(originalPrompt);
   const before = http.requests.at(-1).body.messages.filter(message => message.role === "user").at(-1);
   const beforeText = typeof before.content === "string" ? before.content : before.content.filter(part => part.type === "text").map(part => part.text).join("");
-  assert.ok(beforeText.includes("OLD_RULE_SOURCE_CHECK_REQUEST"));
+  // 新底座还会追加 ultraloop-discovery；旧规则仍作为 user 发出，但不保证是最后一项。
+  assert.ok(JSON.stringify(http.requests.at(-1).body.messages).includes("OLD_RULE_SOURCE_CHECK_REQUEST"));
   assert.notEqual(beforeText, originalPrompt, "baseline must reproduce the displaced user question");
   await client.stop();
-  evidence.push({ state: "old-hook-baseline", prompt: originalPrompt, actualUserLast: false, injectedRuleLast: true });
+  evidence.push({ state: "old-hook-baseline", prompt: originalPrompt, actualUserLast: false, legacyRulePresent: true });
   for (const state of ["enabled", "disabled"]) {
     if (state === "disabled") await rename(join(plugin, "step.plugin.json"), join(plugin, "step.plugin.disabled.json"));
     client = new StepCodeRpcClient({
@@ -65,18 +66,19 @@ pi.on('before_agent_start', () => ({message:{customType:'first-principles',displ
       await client.promptAndWait(prompt);
       const request = http.requests.at(-1).body;
       const system = request.messages.filter(message => ["system", "developer"].includes(message.role)).map(message => message.content).join("\n");
+      const modelContext = request.messages.map(message => typeof message.content === "string" ? message.content : (message.content ?? []).filter(part => part.type === "text").map(part => part.text).join("")).join("\n");
       assert.ok(system.includes(existingRule));
       assert.ok(!system.includes("查找钩子源码"));
       assert.ok(!JSON.stringify(request).includes("LEGACY_RULE_READ_SOURCE_MUST_NOT_BE_SENT"));
       const lastUser = request.messages.filter(message => message.role === "user").at(-1);
       assert.equal(typeof lastUser.content === "string" ? lastUser.content : lastUser.content.filter(part => part.type === "text").map(part => part.text).join(""), prompt);
       if (prompt.startsWith("[@PDF]")) {
-        assert.ok(system.includes('"installed":true'));
-        assert.ok(system.includes(`"enabled":${state === "enabled"}`));
-        assert.ok(system.includes(`"loaded":${state === "enabled"}`));
-        if (state === "enabled") assert.ok(system.includes("step-builtin-pdf-pdf"));
-        assert.equal(system.includes("LOCAL_SKILL_BODY"), state === "enabled", "selected native skill body must reach the actual model request only while enabled");
-      } else assert.ok(!system.includes("本轮引用插件的事实"));
+        assert.ok(modelContext.includes('"installed":true'));
+        assert.ok(modelContext.includes(`"enabled":${state === "enabled"}`));
+        assert.ok(modelContext.includes(`"loaded":${state === "enabled"}`));
+        if (state === "enabled") assert.ok(modelContext.includes("step-builtin-pdf-pdf"));
+        assert.equal(modelContext.includes("LOCAL_SKILL_BODY"), state === "enabled", "selected native skill body must reach the actual model request only while enabled");
+      } else assert.ok(!modelContext.includes("本轮引用插件的事实"));
       evidence.push({ state, prompt, actualUserLast: true, ruleOnlyInSystem: true, legacyRuleFiltered: true });
     }
     const { entries } = await client.getEntries();
