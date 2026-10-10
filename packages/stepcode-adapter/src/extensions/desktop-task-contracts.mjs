@@ -9,7 +9,6 @@ import { registerFileCheckpoints } from "../file-checkpoints.mjs";
 /** 给模型真实产品工具边界，并在执行前阻止把常驻规则变成烧迭代的工作目标。 */
 export default function desktopTaskContracts(pi) {
   if (process.env.STEPCODE_TASK_MODE !== "desktop") return;
-  registerFileCheckpoints(pi);
   let loadedSkills = [], pluginDiscoveryContext = "";
   let hookSettings = {}, hookSettingsError = "";
   let needsPluginTarget = false;
@@ -72,4 +71,7 @@ export default function desktopTaskContracts(pi) {
     });
   });
   registerAssistantOpeningHook(pi, () => hookSettings["opening-explanation"] !== false);
+  // 先完成准入判定；被开场说明/规则拦截的调用不会执行，也不会触发 tool_result。
+  // 提前记录 before 会留下永久 pending，误伤同路径后续正常调用的撤销能力。
+  registerFileCheckpoints(pi);
 }

@@ -125,7 +125,7 @@ function parseFileUrlPath(path: string): string | null {
       return null;
     }
 
-    const decodedPathname = decodeFilePathUriEscapes(url.pathname);
+    const decodedPathname = decodeFilePathUriEscapes(url.pathname, true);
     if (/^\/[a-zA-Z]:\//.test(decodedPathname)) {
       return decodedPathname.slice(1);
     }
@@ -141,7 +141,7 @@ function parseFileUrlPath(path: string): string | null {
 }
 
 function normalizeMarkdownFilePath(path: string): string {
-  return parseFileUrlPath(path) ?? decodeFilePathUriEscapes(path);
+  return parseFileUrlPath(path) ?? decodeFilePathUriEscapes(path, true);
 }
 
 export function normalizeWorkspaceRelativeFilePath(relativePath: string): string | null {

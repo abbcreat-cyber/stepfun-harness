@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { lstat, readFile, writeFile, unlink, mkdir, rename } from "node:fs/promises";
 import { resolve, dirname, parse } from "node:path";
 import { homedir } from "node:os";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const CHECKPOINT = "desktop-file-checkpoint-v1";
 export const hashBytes = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -25,12 +26,25 @@ export async function readImage(path) {
   }
 }
 
-export async function putImage(path, image) {
-  if (image.data === null) await unlink(path).catch(e => { if (e.code !== "ENOENT") throw e; });
+export async function putImage(path, image, expectedHash) {
+  const expected = expectedHash ?? (await readImage(path)).hash;
+  async function mutate(operation) {
+    for (let attempt = 0; ; attempt++) {
+      if ((await readImage(path)).hash !== expected) throw new Error("文件在撤销期间发生变化，请重新预览");
+      try { await operation(); return; }
+      catch (error) {
+        // Windows 预览/索引读取的共享锁可能短暂阻止原子替换；不删除原文件，
+        // 仅有界重试，每次重查哈希，避免等待期间覆盖新的外部内容。
+        if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(error.code) || attempt >= 5) throw error;
+        await delay(20 * 2 ** attempt);
+      }
+    }
+  }
+  if (image.data === null) await mutate(() => unlink(path).catch(e => { if (e.code !== "ENOENT") throw e; }));
   else {
     await mkdir(dirname(path), { recursive: true });
     const temp = `${path}.rewind-${randomUUID()}.tmp`;
-    try { await writeFile(temp, Buffer.from(image.data, "base64"), { flag: "wx" }); await rename(temp, path); }
+    try { await writeFile(temp, Buffer.from(image.data, "base64"), { flag: "wx" }); await mutate(() => rename(temp, path)); }
     finally { await unlink(temp).catch(e => { if (e.code !== "ENOENT") throw e; }); }
   }
 }
@@ -38,6 +52,9 @@ export async function putImage(path, image) {
 /** 原生扩展侧记录。每次调用独立日志；并发同路径不能假装成安全串行修改。 */
 export function registerFileCheckpoints(pi) {
   const pending = new Map();
+  // 新用户轮已与旧执行轮隔离；中断留下的内存记录不能给新写入打 overlap。
+  // 不补造旧记录的 after，历史中无法证明完成的 checkpoint 仍然拒绝撤销。
+  pi.on("before_agent_start", () => pending.clear());
   pi.on("tool_call", async (event, ctx) => {
     if (!["write_file", "edit_file", "write", "edit", "run_command", "bash"].includes(event.toolName)) return;
     const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message?.role === "user");
@@ -126,7 +143,7 @@ export async function applyCheckpoints(files) {
     for (const item of preview.safeFiles) {
       const file = files.find(f => f.path === item.path), current = await readImage(file.path);
       if (current.hash !== file.calls.at(-1).after) throw new Error("文件在预览后发生变化，请重新预览");
-      await putImage(file.path, file.calls[0].before);
+      await putImage(file.path, file.calls[0].before, current.hash);
       changed.push({ path: file.path, before: current, restored: file.calls[0].before.hash });
     }
   } catch (error) {
@@ -135,7 +152,7 @@ export async function applyCheckpoints(files) {
   async function undo() {
     for (const file of [...changed].reverse()) {
       if ((await readImage(file.path)).hash !== file.restored) throw new Error("回退恢复期间文件已被外部修改；保留快照，请人工检查");
-      await putImage(file.path, file.before);
+      await putImage(file.path, file.before, file.restored);
     }
   }
   return { applied: true, preview, undo };

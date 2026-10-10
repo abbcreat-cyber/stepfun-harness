@@ -83,7 +83,7 @@ import {
   resolveMarkdownFileLink,
 } from "@/lib/markdownFileLink.js";
 import { stripBalancedAssistantPathQuotes } from "@/lib/assistantPathQuotes.js";
-import { getPathLeaf } from "@/lib/path.js";
+import { encodeUriPathForFileUrl, getPathLeaf } from "@/lib/path.js";
 import { getWorkspaceFileRelativePath } from "@/workspace-file-tree/model.js";
 import { resolveWorkspaceEditorSelection } from "@/lib/workspaceEditorSelection.js";
 import { sortInstalledEditorsForFileTree } from "@/workspace-file-tree/helpers.js";
@@ -763,15 +763,18 @@ function formatMarkdownFileLinkTargetHref(href: string): string {
           /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(parsedTarget.path)
         ? parsedTarget.path
         : `./${parsedTarget.path}`;
+  // 这里交给 rehype 的仍然是 href，不能把已解码的文件系统路径直接传给
+  // 后面的链接 resolver 再解码；否则字面 %23 会变成另一个文件名中的 #。
+  const encodedPath = encodeUriPathForFileUrl(path);
   if (parsedTarget.lineNumber === null) {
-    return path;
+    return encodedPath;
   }
 
   if (parsedTarget.columnNumber === null) {
-    return `${path}:${parsedTarget.lineNumber}`;
+    return `${encodedPath}:${parsedTarget.lineNumber}`;
   }
 
-  return `${path}:${parsedTarget.lineNumber}:${parsedTarget.columnNumber}`;
+  return `${encodedPath}:${parsedTarget.lineNumber}:${parsedTarget.columnNumber}`;
 }
 
 function shouldRewriteMarkdownFileLinkHref(href: string): boolean {

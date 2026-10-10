@@ -4,6 +4,33 @@ import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { registerFileCheckpoints, checkpointsFor, checkpointPreview, applyCheckpoints } from "../src/file-checkpoints.mjs";
 import { activeEntries, createHistoryControls } from "../src/bridge/history-controls.mjs";
+import desktopTaskContracts from "../src/extensions/desktop-task-contracts.mjs";
+
+test("开场拦截不留下写入 checkpoint，随后真实修改仍可安全撤销", async () => {
+  const base = process.env.STEP_TEST_ROOT || "D:/Temp/stepcode-history-tests";
+  await mkdir(base, { recursive: true }); const root = await mkdtemp(join(base, "blocked-"));
+  const hooks = new Map(), entries = [], oldMode = process.env.STEPCODE_TASK_MODE;
+  process.env.STEPCODE_TASK_MODE = "desktop";
+  try { desktopTaskContracts({
+    on(name, fn) { hooks.set(name, [...(hooks.get(name) ?? []), fn]); },
+    appendEntry(customType, data) { entries.push({ customType, data: structuredClone(data) }); },
+  }); } finally { if (oldMode === undefined) delete process.env.STEPCODE_TASK_MODE; else process.env.STEPCODE_TASK_MODE = oldMode; }
+  const branch = [{ type: "message", id: "user", message: { role: "user" } }];
+  const ctx = { cwd: root, sessionManager: { getBranch: () => branch, getLeafId: () => "assistant-first" } };
+  // 仅激活开场 hook 的 before_agent_start，避免测试读取用户插件/钩子配置。
+  for (const fn of hooks.get("before_agent_start")) {
+    if (fn.constructor.name !== "AsyncFunction") fn({ prompt: "修改文件" }, ctx);
+  }
+  async function call(event) { for (const fn of hooks.get("tool_call")) { const result = await fn(event, ctx); if (result?.block) return result; } }
+  const path = join(root, "file.txt"); await writeFile(path, "before");
+  const blocked = await call({ toolCallId: "blocked", toolName: "write_file", input: { path } });
+  assert.equal(blocked.block, true); assert.equal(entries.length, 0);
+  for (const fn of hooks.get("message_end")) fn({ message: { role: "assistant", content: [{ type: "text", text: "先修改文件，再检查结果。" }] } });
+  const event = { toolCallId: "allowed", toolName: "write_file", input: { path } };
+  await call(event); await writeFile(path, "after");
+  for (const fn of hooks.get("tool_result")) await fn(event, ctx);
+  assert.equal((await checkpointPreview(checkpointsFor(entries, "user"))).canApply, true);
+});
 
 test("文件操作前后快照、外部冲突、新文件与中文空格路径", async () => {
   const base = process.env.STEP_TEST_ROOT || "D:/Temp/stepcode-history-tests";

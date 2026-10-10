@@ -36,16 +36,19 @@ export function isAbsoluteFilePath(path: string): boolean {
   return path.startsWith("/") || WINDOWS_ABSOLUTE_PATH_RE.test(path) || UNC_PATH_RE.test(path);
 }
 
-export function decodeFilePathUriEscapes(path: string): string {
+export function decodeFilePathUriEscapes(path: string, decodeReserved = false): string {
   if (!URI_ESCAPE_RE.test(path)) {
     return path;
   }
 
   try {
-    // markdown/tool 输出里的本地文件路径可能已经按 URI 编码，
-    // 例如 workspace 名里的空格会变成 %20。这里用 decodeURI 只还原路径文本，
-    // 保留 %2F 这类分隔符转义，避免把文件名内容误拆成新的路径层级。
-    return decodeURI(path);
+    // 已解析的文件系统路径可能真的含有 %23；仅 href 边界允许解码保留字符。
+    // 默认保持既有语义，防止预览归一化再次把字面 %23 变成 #。
+    if (!decodeReserved) return decodeURI(path);
+    // 文件名中的 #、&、+ 等也需解码，decodeURI 会错误保留它们的转义。
+    // 单独保留编码的目录分隔符；不重复解码，避免 %2523 变成 #。
+    return path.split(/(%2f|%5c)/i)
+      .map((part, index) => index % 2 ? part : decodeURIComponent(part)).join("");
   } catch {
     return path;
   }
@@ -69,7 +72,7 @@ export function joinFilePath(basePath: string, childPath: string): string {
 // encodeURI 不转义 # 和 ?，但它们在 URL 里是 fragment/query 分隔符。
 // 文件名包含 # 时（如 index#v2.html）生成的 file URL 会被下游 URL 解析截断 pathname
 // （只剩 /E:/dir/index），shell 打开必然失败。这里在 encodeURI 之后补转义。
-function encodeUriPathForFileUrl(value: string): string {
+export function encodeUriPathForFileUrl(value: string): string {
   return encodeURI(value).replace(/#/g, "%23").replace(/\?/g, "%3F");
 }
 
