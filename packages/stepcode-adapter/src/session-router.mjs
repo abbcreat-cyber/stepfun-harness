@@ -140,13 +140,14 @@ export class SessionRouter {
         this.subscriptions.set(sub, worker);
         worker.subscriptions.add(sub);
       }
-      if (pending.method === "v4/conversation/unsubscribe") {
+      if (pending.method === "v4/conversation/unsubscribe" && !frame.error) {
         this.subscriptions.delete(pending.params.subscriptionId);
         const removed = worker.subscriptionDetails.get(pending.params.subscriptionId);
         worker.subscriptions.delete(pending.params.subscriptionId);
         worker.subscriptionDetails.delete(pending.params.subscriptionId);
-        // 该连接已无任何订阅时回收流控状态（防 connectionId 级泄漏）。
-        if (removed && ![...worker.subscriptionDetails.values()].some((d) => d.connectionId === removed.connectionId)) {
+        // 连接由多个会话 worker 共享；取消成功且所有 worker 均无订阅后才能回收流控状态。
+        if (removed && ![...this.workers.values()].some((owner) =>
+          [...owner.subscriptionDetails.values()].some((d) => d.connectionId === removed.connectionId))) {
           this.connectionFlowStates.delete(removed.connectionId);
         }
       }

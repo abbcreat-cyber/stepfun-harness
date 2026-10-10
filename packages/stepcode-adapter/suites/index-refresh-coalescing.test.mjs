@@ -22,7 +22,13 @@ function fixture() {
     return child;
   };
   syncBuiltinESMExports();
-  const router = new SessionRouter({ args: [], write() {} });
+  const output = [];
+  const router = new SessionRouter({
+    args: [],
+    write(frame) {
+      output.push(frame);
+    },
+  });
   router.receive({
     id: "list",
     method: "v4/conversation/subscribe",
@@ -44,6 +50,8 @@ function fixture() {
     refreshes,
     notify,
     ack,
+    emit,
+    output,
     async cleanup() {
       await router.close();
       cp.spawn = original;
@@ -109,3 +117,75 @@ test("刷新失败不自旋，后续独立通知仍可刷新", async () => {
     await f.cleanup();
   }
 });
+
+for (const state of ["saturated", "closed"]) {
+  test(`共享连接 ${state} 在取消一个会话后仍限制其他会话，最后订阅才回收`, async () => {
+    const f = fixture();
+    const subscribe = (w, id, connectionId) => {
+      f.router.receive({
+        id: `subscribe-${id}`,
+        method: "v4/conversation/subscribe",
+        params: { topic: `conversation/${w.key}`, connectionId },
+      });
+      f.emit(w.child, { id: w.child.frames.at(-1).id, result: { ack: { subscriptionId: id } } });
+    };
+    const unsubscribe = (w, id, error) => {
+      f.router.receive({
+        id: `unsubscribe-${id}`,
+        method: "v4/conversation/unsubscribe",
+        params: { subscriptionId: id },
+      });
+      f.emit(w.child, {
+        id: w.child.frames.at(-1).id,
+        ...(error ? { error: { message: "retry" } } : { result: {} }),
+      });
+    };
+    const sendFrame = (id, kind) =>
+      f.emit(f.b.child, {
+        method: "v4/conversation/frame",
+        params: { subscriptionId: id, deliveryKind: kind },
+      });
+    try {
+      subscribe(f.a, "sa", "shared");
+      subscribe(f.b, "sb", "shared");
+      subscribe(f.b, "other", "separate");
+      for (const connectionId of ["shared", "separate"])
+        f.router.receive({
+          id: `flow-${connectionId}`,
+          method: "v4/connection/flow",
+          params: { connectionId, state },
+        });
+      unsubscribe(f.a, "sa");
+      assert.equal(f.router.connectionFlowStates.get("shared"), state);
+      f.output.length = 0;
+      sendFrame("sb", "online");
+      sendFrame("other", "online");
+      assert.equal(f.output.length, 0);
+      sendFrame("sb", "initial");
+      sendFrame("sb", "recovery");
+      assert.deepEqual(
+        f.output.map((x) => x.params.deliveryKind),
+        ["initial", "recovery"],
+      );
+      unsubscribe(f.b, "sb", true);
+      assert.equal(f.router.subscriptions.get("sb"), f.b);
+      assert.equal(f.b.subscriptionDetails.get("sb").connectionId, "shared");
+      f.router.receive({
+        id: "drain",
+        method: "v4/connection/flow",
+        params: { connectionId: "shared", state: "drained" },
+      });
+      f.output.length = 0;
+      sendFrame("sb", "online");
+      sendFrame("other", "online");
+      assert.equal(f.output.length, 1);
+      unsubscribe(f.b, "sb");
+      assert.equal(f.router.connectionFlowStates.has("shared"), false);
+      assert.equal(f.router.connectionFlowStates.get("separate"), state);
+      unsubscribe(f.b, "other");
+      assert.equal(f.router.connectionFlowStates.has("separate"), false);
+    } finally {
+      await f.cleanup();
+    }
+  });
+}

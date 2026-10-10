@@ -153,6 +153,8 @@ export class SessionStatistics {
     const used = new Set(),
       calls = new Map(),
       t = this.totals;
+    // 每次恢复只解析一次计时事件；按供应商、模型和时间分桶，避免逐消息扫描整个账本。
+    let timingBuckets;
     for (const entry of entries) {
       const message = entry.message,
         ended = Date.parse(entry.timestamp);
@@ -162,17 +164,39 @@ export class SessionStatistics {
           if (part.type === "toolCall" && part.id) calls.set(part.id, ended);
         const key = identity(message);
         if (this.timedMessages.has(key)) continue;
-        const candidate = events
-          .filter(
-            (e) =>
-              !used.has(e.eventId) &&
-              e.properties?.model === message.model &&
-              e.properties?.provider === message.provider &&
-              Math.abs(Date.parse(e.at) - ended) <= 250,
-          )
-          .sort(
-            (a, b) => Math.abs(Date.parse(a.at) - ended) - Math.abs(Date.parse(b.at) - ended),
-          )[0];
+        // 已恢复完整时不建索引，保留热会话不扫描 telemetry 的路径。
+        if (!timingBuckets) {
+          timingBuckets = new Map();
+          for (const [order, event] of events.entries()) {
+            const at = Date.parse(event.at);
+            if (!Number.isFinite(at)) continue;
+            const provider = event.properties?.provider,
+              model = event.properties?.model;
+            if (!timingBuckets.has(provider)) timingBuckets.set(provider, new Map());
+            const models = timingBuckets.get(provider);
+            if (!models.has(model)) models.set(model, new Map());
+            const buckets = models.get(model),
+              bucket = Math.floor(at / 250);
+            if (!buckets.has(bucket)) buckets.set(bucket, []);
+            buckets.get(bucket).push({ event, at, order });
+          }
+        }
+        const buckets = timingBuckets.get(message.provider)?.get(message.model);
+        const bucket = Math.floor(ended / 250);
+        let best,
+          distance = Infinity;
+        for (let offset = -1; offset <= 1; offset++) {
+          for (const item of buckets?.get(bucket + offset) ?? []) {
+            const delta = Math.abs(item.at - ended);
+            if (used.has(item.event.eventId) || delta > 250) continue;
+            // 同距离按原输入顺序决胜，与旧版稳定排序一致；坏 duration 仍由下方原规则处理。
+            if (delta < distance || (delta === distance && item.order < best.order)) {
+              best = item;
+              distance = delta;
+            }
+          }
+        }
+        const candidate = best?.event;
         if (
           !candidate ||
           !Number.isFinite(candidate.properties.duration_ms) ||
