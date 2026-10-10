@@ -5,7 +5,7 @@ import type { FileWatchEvent } from "@zcode/shared";
 import { logger } from "@/logger.js";
 import { getContainingDirectoryPath } from "@/lib/path.js";
 
-interface PptxFileWatchSnapshot {
+interface PreviewFileWatchSnapshot {
   filePath: string | null;
   fileWatcherService: IFileWatcherService | null;
   ready: boolean;
@@ -19,7 +19,7 @@ function normalizeFileWatchPathForCompare(path: string): string {
     : normalized;
 }
 
-function shouldReloadPptxPreviewForWatchEvent(event: FileWatchEvent, filePath: string): boolean {
+function shouldReloadPreviewForWatchEvent(event: FileWatchEvent, filePath: string): boolean {
   if (!event.changedPath) {
     return true;
   }
@@ -29,14 +29,14 @@ function shouldReloadPptxPreviewForWatchEvent(event: FileWatchEvent, filePath: s
   );
 }
 
-export function usePptxFileWatch({
+export function usePreviewFileWatch({
   filePath,
   fileWatcherService,
 }: {
   filePath: string | null;
   fileWatcherService: IFileWatcherService;
 }): { ready: boolean; reloadGeneration: number } {
-  const [snapshot, setSnapshot] = useState<PptxFileWatchSnapshot>({
+  const [snapshot, setSnapshot] = useState<PreviewFileWatchSnapshot>({
     filePath: null,
     fileWatcherService: null,
     ready: false,
@@ -77,15 +77,17 @@ export function usePptxFileWatch({
       .watch({ path: directoryPath })
       .then(({ id }) => {
         if (cancelled) {
-          void fileWatcherService.unwatch({ id });
+          void fileWatcherService.unwatch({ id }).catch((error: unknown) => {
+            logger.warn("[PreviewFileWatch] 释放迟到的目录监听失败", { path: filePath, error });
+          });
           return;
         }
         watcherId = id;
         subscription = fileWatcherService.onDynamicChange(id)((event) => {
-          if (!shouldReloadPptxPreviewForWatchEvent(event, filePath)) {
+          if (cancelled || !shouldReloadPreviewForWatchEvent(event, filePath)) {
             return;
           }
-          logger.debug("[PptxFileWatch] 源文件发生变化，刷新已打开预览", {
+          logger.debug("[PreviewFileWatch] 源文件发生变化，刷新已打开预览", {
             path: filePath,
             changedPath: event.changedPath,
           });
@@ -110,7 +112,7 @@ export function usePptxFileWatch({
           return;
         }
         // 文件监听只负责自动刷新；注册失败时仍允许首次读取和手动重新打开文件。
-        logger.warn("[PptxFileWatch] 监听 PPTX 所在目录失败", {
+        logger.warn("[PreviewFileWatch] 监听预览文件所在目录失败", {
           path: filePath,
           directoryPath,
           error: error instanceof Error ? error.message : String(error),
@@ -127,7 +129,7 @@ export function usePptxFileWatch({
       subscription?.dispose();
       if (watcherId) {
         void fileWatcherService.unwatch({ id: watcherId }).catch((error: unknown) => {
-          logger.warn("[PptxFileWatch] 停止监听 PPTX 所在目录失败", {
+          logger.warn("[PreviewFileWatch] 停止监听预览文件所在目录失败", {
             path: filePath,
             error: error instanceof Error ? error.message : String(error),
           });

@@ -27,7 +27,7 @@ import { cn } from "@/components/lib/utils.js";
 import type { FileBinaryPreview, FileMediaPreview, FileTextSlice } from "@zcode/shared";
 import { TID_PREVIEW_PANE } from "@zcode/shared";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
-import { usePptxFileWatch } from "@/hooks/usePptxFileWatch.js";
+import { usePreviewFileWatch } from "@/hooks/usePreviewFileWatch.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { usePdfViewerLabels, usePptxViewerLabels } from "@/hooks/usePreviewViewerLabels.js";
 import {
@@ -574,10 +574,18 @@ export function PreviewPane({
   const showDocumentHeaderDivider = shouldShowPreviewPaneHeaderDivider(source);
   const pptxSourcePath = pptxSource?.path ?? null;
   const pptxReferenceNavigation = pptxSource?.referenceNavigation ?? null;
-  const { ready: pptxFileWatchReady, reloadGeneration: pptxReloadGeneration } = usePptxFileWatch({
-    filePath: pptxSourcePath,
+  // 只在首次打开时读取会让后续文件修改停留在旧画面；静态预览共用目录监听，
+  // 原子替换也能刷新。音视频播放和历史 diff 不参与重载。
+  const watchedFilePath =
+    pptxSource?.path ??
+    pdfSource?.path ??
+    imageSource?.path ??
+    (source?.type === "file" && !mediaSource ? source.path : null);
+  const { ready: fileWatchReady, reloadGeneration: fileReloadGeneration } = usePreviewFileWatch({
+    filePath: watchedFilePath,
     fileWatcherService,
   });
+  const previewReadReady = !watchedFilePath || fileWatchReady;
   const diffFilePreviewSource = useMemo(
     () =>
       source?.type === "patch" || source?.type === "multi-file-diff"
@@ -871,8 +879,6 @@ export function PreviewPane({
   }, [breadcrumb]);
 
   useEffect(() => {
-    let disposed = false;
-
     preservedScrollMetricsRef.current = {
       scrollHeight: 0,
       scrollTop: 0,
@@ -884,8 +890,12 @@ export function PreviewPane({
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
+  }, [fileService, fileSource, intl]);
 
-    if (!fileSource) {
+  useEffect(() => {
+    let disposed = false;
+    // 同一文件的刷新只替换内容，不能清空预览并把用户阅读位置跳回顶部。
+    if (!fileSource || !previewReadReady) {
       return () => {
         disposed = true;
       };
@@ -906,6 +916,7 @@ export function PreviewPane({
         }
 
         const nextFileState = resolvePreviewPaneTextFileResult(result);
+        setError(null);
         setFilePreview(nextFileState.filePreview);
         setFileTooLarge(nextFileState.fileTooLarge);
       })
@@ -915,6 +926,7 @@ export function PreviewPane({
         }
 
         logger.error(`[PreviewPane] 读取文件失败 path=${fileSource.path}:`, readError);
+        setFilePreview(null);
         setError(
           isPreviewPaneMissingFileError(readError)
             ? intl.formatMessage({ id: "codeViewer.fileMissing" })
@@ -932,12 +944,12 @@ export function PreviewPane({
     return () => {
       disposed = true;
     };
-  }, [fileService, fileSource, intl]);
+  }, [fileService, fileSource, intl, previewReadReady, fileReloadGeneration]);
 
   useEffect(() => {
     let disposed = false;
 
-    if (!imageSource) {
+    if (!imageSource || !previewReadReady) {
       setImagePreview(null);
       setLoadingImagePreview(false);
       return () => {
@@ -981,7 +993,7 @@ export function PreviewPane({
     return () => {
       disposed = true;
     };
-  }, [fileService, imageSource, intl]);
+  }, [fileService, imageSource, intl, previewReadReady, fileReloadGeneration]);
 
   useEffect(() => {
     let disposed = false;
@@ -1141,7 +1153,7 @@ export function PreviewPane({
   useEffect(() => {
     let disposed = false;
 
-    if (!pdfSource) {
+    if (!pdfSource || !previewReadReady) {
       setPdfViewerSource(null);
       setLoadingPdfPreview(false);
       return () => {
@@ -1236,12 +1248,12 @@ export function PreviewPane({
     return () => {
       disposed = true;
     };
-  }, [fileService, pdfSource, intl]);
+  }, [fileService, pdfSource, intl, previewReadReady, fileReloadGeneration]);
 
   useEffect(() => {
     let disposed = false;
 
-    if (!officePreviewKind || source?.type !== "file") {
+    if (!officePreviewKind || source?.type !== "file" || !previewReadReady) {
       setOfficePreview(null);
       setLoadingOfficePreview(false);
       return () => {
@@ -1288,7 +1300,7 @@ export function PreviewPane({
     return () => {
       disposed = true;
     };
-  }, [fileService, intl, officePreviewKind, source]);
+  }, [fileService, intl, officePreviewKind, source, previewReadReady, fileReloadGeneration]);
 
   useEffect(() => {
     const navigation = pptxReferenceNavigation;
@@ -1330,7 +1342,7 @@ export function PreviewPane({
       };
     }
 
-    if (!pptxFileWatchReady) {
+    if (!previewReadReady) {
       setPptxPreviewData(null);
       setLoadingPptxPreview(true);
       setError(null);
@@ -1424,7 +1436,7 @@ export function PreviewPane({
     return () => {
       disposed = true;
     };
-  }, [fileService, intl, pptxFileWatchReady, pptxReloadGeneration, pptxSourcePath]);
+  }, [fileService, intl, previewReadReady, fileReloadGeneration, pptxSourcePath]);
 
   const handlePreviewContentScroll = useCallback(() => {
     rememberScrollMetrics();
