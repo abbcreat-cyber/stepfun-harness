@@ -71,7 +71,7 @@ export function createSessionsIndex(ctx) {
 		}
 	}
 
-	function persistedSummariesFor(workspacePath, identity = Boolean(ctx.primarySession?.workspace?.workspaceIdentity) || !isAbsolute(String(workspacePath))) {
+	function persistedSummariesFor(workspacePath, identity = Boolean(ctx.primarySession?.workspace?.workspaceIdentity) || !isAbsolute(String(workspacePath)), { afterWatermarks, sessionIds } = {}) {
 		const workspaces = readPersistedWorkspaces();
 		const key = normalizeWorkspaceKey(workspacePath, identity);
 		const legacyKey = String(workspacePath).replaceAll("/", "\\").toLowerCase();
@@ -85,7 +85,13 @@ export function createSessionsIndex(ctx) {
 		const unique = new Map();
 		// exact bucket 在前；legacy 只能补缺项，不能覆盖新的标题/活动水位。
 		for (const summary of scoped) if (summary && typeof summary.sessionId === "string" && !tombstones.has(summary.sessionId) && !unique.has(summary.sessionId)) unique.set(summary.sessionId, summary);
-		return [...unique.values()].map(s => { const saved=ctx.readConversation(s.sessionId);return saved?.rows?.length === 0 ? {...s,phase:"draft"} : s; });
+		// 增量推送原本读完全部聊天正文才按水位丢弃旧摘要，历史越长重复 IO 越多。
+		// 先按同一水位过滤；完整快照不传水位，仍逐条校正空草稿，不引入正文缓存。
+		return [...unique.values()].filter(s => {
+			if (sessionIds && !sessionIds.has(s.sessionId)) return false;
+			const watermark = afterWatermarks?.get(s.sessionId);
+			return watermark === undefined || watermark < (Number(s.lastActivityAt) || 0);
+		}).map(s => { const saved=ctx.readConversation(s.sessionId);return saved?.rows?.length === 0 ? {...s,phase:"draft"} : s; });
 	}
 
 	/** 把 primarySession 的当前摘要落盘（建会话与 turn 终态时各一次）。 */
@@ -225,10 +231,7 @@ export function createSessionsIndex(ctx) {
 			const workspaceId = topic.slice("sessions-index/".length);
 			const deltas = [];
 			const seen = pushedSummaryWatermarks.get(topic);
-			for (const summary of persistedSummariesFor(workspaceId)) {
-				const watermark = seen?.get(summary.sessionId);
-				const lastActivityAt = Number(summary.lastActivityAt) || 0;
-				if (watermark !== undefined && watermark >= lastActivityAt) continue;
+			for (const summary of persistedSummariesFor(workspaceId, undefined, { afterWatermarks: seen })) {
 				deltas.push({ op: "session.upserted", session: summary });
 			}
 			if (deltas.length === 0) continue;

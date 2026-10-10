@@ -278,9 +278,9 @@ export function createSessionMethods(ctx) {
 				}
 				return summary.phase;
 			};
+			// 指定少量 sessionIds 的查询不能先读遍全部历史正文，筛选交给索引读取入口。
 			const sessions = ctx.persistedSummariesFor(params?.workspace?.workspaceIdentity || params?.workspace?.workspaceKey || workspacePath,
-				Boolean(params?.workspace?.workspaceIdentity) || Boolean(params?.workspace?.workspaceKey && params.workspace.workspaceKey !== workspacePath))
-				.filter((summary) => !requestedIds || requestedIds.has(summary.sessionId))
+				Boolean(params?.workspace?.workspaceIdentity) || Boolean(params?.workspace?.workspaceKey && params.workspace.workspaceKey !== workspacePath), { sessionIds: requestedIds })
 				.map((summary) => {
 					const saved = ctx.primarySession?.sessionId === summary.sessionId
 						? null
