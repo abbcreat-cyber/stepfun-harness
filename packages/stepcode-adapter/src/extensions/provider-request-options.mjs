@@ -38,14 +38,17 @@ export function createProviderRequestOptions(pi, { bindings, key, current, gener
     signalCleanup = undefined;
   });
   // 手动压缩不触发 before_agent_start；只接管该次已准备的选项，自动压缩沿用原轮次。
-  pi.on("session_before_compact", event => {
+  pi.on("session_before_compact", (event) => {
     if (event.reason === "manual" && prepared) {
-      active = { ...prepared, maintenance: "compact" }; prepared = undefined;
+      active = { ...prepared, maintenance: "compact" };
+      prepared = undefined;
     }
   });
   const finishCompaction = () => {
     if (active?.maintenance !== "compact") return;
-    active = undefined; signalCleanup?.(); signalCleanup = undefined;
+    active = undefined;
+    signalCleanup?.();
+    signalCleanup = undefined;
   };
   pi.on("session_compact", finishCompaction);
   pi.on("session_compact_failed", finishCompaction);
@@ -95,6 +98,33 @@ export function createProviderRequestOptions(pi, { bindings, key, current, gener
     },
     isReasoningMapped(model) {
       return capabilities(key(model)).reasoningMapped;
+    },
+    openingValues(model) {
+      const modelKey = key(model),
+        program = programs.get(modelKey);
+      // 内置订阅和部分 provider 使用 SDK 原生档位，没有 CEL reasoning 映射。
+      if (!program)
+        return model.reasoning && Number.isInteger(model.maxTokens) && model.maxTokens > 0
+          ? { reasoningLevel: "off", maxOutputTokens: Math.min(768, model.maxTokens) }
+          : null;
+      const off = program.reasoningMapped
+        ? ["disabled", "off"].find((value) => program.specs.reasoningLevel?.values?.includes(value))
+        : model.reasoning
+          ? "off"
+          : null;
+      if (!off || active?.modelKey !== modelKey) return null;
+      if (!Number.isInteger(active.values.maxOutputTokens) || active.values.maxOutputTokens <= 0)
+        return null;
+      return {
+        ...active.values,
+        reasoningLevel: off,
+        maxOutputTokens: Math.min(768, active.values.maxOutputTokens),
+      };
+    },
+    applyOpening(model, payload, values) {
+      // 使用本模型声明的映射，仅覆盖独立开场请求；不修改 active 或用户选中的主任务档位。
+      this.apply(model, payload);
+      return programs.get(key(model))?.maps.apply(payload, values) ?? payload;
     },
     handler(args, ctx) {
       let envelope = {};

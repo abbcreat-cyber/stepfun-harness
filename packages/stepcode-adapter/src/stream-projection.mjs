@@ -76,7 +76,8 @@ export class StepStreamProjection {
       const text = row.kind === "reasoning" ? part?.thinking : part?.text;
       if (typeof text === "string") row.text = row.kind === "assistantText" ? visibleAssistantText(text,{strip:stripProtocol}) : text;
       row.state = interrupted ? "interrupted" : "complete";
-      if (row.kind === "reasoning") row.durationMs = Date.now() - row.createdAt;
+      // thinking_end 后的正文/工具参数仍属于同一个 message，最终回执不能重算思考时长。
+      if (row.kind === "reasoning" && row.durationMs === undefined) row.durationMs = Date.now() - row.createdAt;
     }
     this.emitRow(row);
   }
@@ -96,6 +97,10 @@ export class StepStreamProjection {
       const part = inner.partial?.content?.[index];
       const kind = inner.type.startsWith("thinking_") ? "reasoning" : inner.type.startsWith("toolcall_") ? "toolCall" : inner.type.startsWith("text_") ? "assistantText" : null;
       if (!kind) return this.deltas;
+      // 部分兼容端点省略 thinking_end；正文/工具块开始就是上一思考块的可观察结束边界。
+      if (kind !== "reasoning") for (const previous of this.blocks.values()) {
+        if (previous.kind === "reasoning" && previous.state === "streaming") this.finishBlock(previous, { thinking: previous.text });
+      }
       const row = this.block(index, kind, part ?? { id: inner.id, name: inner.toolName });
       if (inner.type.endsWith("_delta")) this.append(row, kind === "toolCall" ? "inputText" : "text", inner.delta);
       if (inner.type.endsWith("_end")) this.finishBlock(row, inner.toolCall ?? part ?? (kind === "reasoning" ? { thinking: inner.content } : { text: inner.content }));

@@ -14,12 +14,21 @@ for (const scenario of ["repair", "silent", "optout", "plugin"]) test(`native op
 }, async t => {
   let f, step = 0;
   const requests = [], errors = [];
+  let openingRequests = 0;
   const exists = async path => { try { await access(path); return true; } catch { return false; } };
   const markers = [];
   const server = createServer(async (req, res) => {
     try {
       const chunks = []; for await (const chunk of req) chunks.push(chunk);
-      const body = JSON.parse(Buffer.concat(chunks).toString()); requests.push(body);
+      const body = JSON.parse(Buffer.concat(chunks).toString());
+      // 本套件验证旧的工具准入修正分支：让快速开场返回套话，必须回退而不能绕过门禁。
+      if (JSON.stringify(body.messages).includes("把提供的任务改写成一句")) {
+        openingRequests++;
+        res.writeHead(200, {"content-type":"text/event-stream"});
+        res.end(`data: ${JSON.stringify({id:"opening",choices:[{index:0,delta:{role:"assistant",content:"收到。"},finish_reason:null}]})}\n\ndata: ${JSON.stringify({id:"opening",choices:[{index:0,delta:{},finish_reason:"stop"}]})}\n\ndata: [DONE]\n\n`);
+        return;
+      }
+      requests.push(body);
       const current = step++;
       if (current === 1 && scenario !== "optout") for (const marker of markers) assert.equal(await exists(marker), false, "preflight allowed a side effect");
       if (scenario === "repair" && current === 1) assert.ok(JSON.stringify(body).includes(OPENING_REQUIRED));
@@ -65,6 +74,8 @@ for (const scenario of ["repair", "silent", "optout", "plugin"]) test(`native op
   if (["repair", "optout"].includes(scenario)) for (const path of markers) assert.equal(await readFile(path, "utf8"), "executed\n");
   else for (const path of markers) assert.equal(await exists(path), false);
   assert.equal(requests.length, scenario === "repair" ? 3 : 2);
+  assert.equal(openingRequests, scenario === "optout" ? 0 : 1);
+  assert.equal(JSON.stringify(requests[0]).includes("<desktop_opening_timing>"), scenario !== "optout", "时机约束必须随原生请求发送，并尊重只给结果");
   if (scenario === "silent") {
     assert.ok(events.some(event => event.type === "tool_execution_end" && JSON.stringify(event.result).includes(OPENING_STOPPED)));
     assert.equal(projection.outcome, "failed");

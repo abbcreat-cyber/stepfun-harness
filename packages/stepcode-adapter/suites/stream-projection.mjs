@@ -53,7 +53,7 @@ for (const [stopReason, outcome, resultType] of [["error", "failed", "error_duri
     const frames = [], ctx = {
       primarySession: { sessionId: "terminal", modelSelection: { providerId: "unknown-provider", modelId: "unknown-model" } },
       conversationRows: [], ledger: new InputLedger(), sessionStatistics: () => ({ handle: () => false }),
-      v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {},
+      v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
       notify: (method, payload) => frames.push({ method, payload }), streamingText: "", eventSeq: 0, stateRevision: 0,
     };
     ctx.ledger.begin({ commandId: "terminal-input", text: "fixture", busy: false });
@@ -73,7 +73,7 @@ test("stream: process failure settles only the current live turn, keeps pending 
   const frames = [], ctx = {
     primarySession: { sessionId: "exit", modelSelection: { providerId: "fixture", modelId: "model" } },
     conversationRows: [], ledger: new InputLedger(), sessionStatistics: () => ({ handle: () => false }),
-    v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {},
+    v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
     notify: (method, payload) => frames.push({ method, payload }), streamingText: "", eventSeq: 0, stateRevision: 0,
   };
   const projection = createProjection(ctx);
@@ -100,7 +100,7 @@ for (const finalReason of ["stop", "error", "aborted"]) test(`stream: repeated n
   const frames = [], ctx = {
     primarySession: { sessionId: "retry", modelSelection: { providerId: "fixture", modelId: "model" } },
     conversationRows: [], ledger: new InputLedger(), sessionStatistics: () => ({ handle: () => false }),
-    v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {},
+    v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
     notify: (method, payload) => frames.push({ method, payload }), streamingText: "", eventSeq: 0, stateRevision: 0,
   };
   ctx.ledger.begin({ commandId: "original-input", text: "retry safely", busy: false }); ctx.ledger.markSubmitted("original-input");

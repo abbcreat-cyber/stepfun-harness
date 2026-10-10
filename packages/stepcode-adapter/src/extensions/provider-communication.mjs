@@ -7,10 +7,11 @@ import {
   communicationFetch,
 } from "../provider-communication.mjs";
 import { normalizeSseResponse } from "../provider-sse-transport.mjs";
-import { getApiProvider } from "@step-harness/providers";
+import { getApiProvider, createAssistantMessageEventStream } from "@step-harness/providers";
 import { randomUUID } from "node:crypto";
 import { createProviderRequestOptions } from "./provider-request-options.mjs";
 import { registerProviderToolIntegrity } from "../provider-tool-integrity.mjs";
+import { earlyOpeningStream, openingTaskText } from "../early-opening-stream.mjs";
 
 /** 原 Step 扩展负责请求补充，仍由原生 streamSimple 消费 HTTP/SSE。 */
 export default function providerCommunication(pi) {
@@ -22,6 +23,13 @@ export default function providerCommunication(pi) {
   const key = (model) => `${model.provider}\0${model.id}`;
   const current = (model) => communicationBinding(model, bindings.get(key(model)));
   const requestOptions = createProviderRequestOptions(pi, { bindings, key, current, generation });
+  let openingAvailable = false;
+  pi.on("before_agent_start", () => {
+    openingAvailable = true;
+  });
+  pi.on("agent_settled", () => {
+    openingAvailable = false;
+  });
   registerProviderToolIntegrity(pi, (model) => !!model && bindings.has(key(model)));
 
   pi.on("before_provider_headers", (event, ctx) => {
@@ -63,24 +71,86 @@ export default function providerCommunication(pi) {
           // 官方 hook runner 会吞异常；真实 stream/fetch seam 的校验必须在 runner 之外执行。
           const validatePayload = (payload) =>
             requestOptions.apply(model, applyCommunicationPayload(payload, model, binding));
-          const mappedReasoning = requestOptions.isReasoningMapped(model);
+          const mappedReasoning = Boolean(binding) && requestOptions.isReasoningMapped(model);
           // 在 SDK 预算计算前去除禁用工具，避免不存在的工具 schema 吃掉可用输出额度。
           const nativeContext =
-            binding.supportsToolCall === false ? { ...context, tools: [] } : context;
+            binding?.supportsToolCall === false ? { ...context, tools: [] } : context;
           // Simple options 的 "off" 是 truthy，Anthropic 会误当开启；映射由 CEL 独占其字段。
           const nativeModel = mappedReasoning ? { ...model, reasoning: false } : model;
-          return native(nativeModel, nativeContext, {
-            ...options,
-            ...(mappedReasoning ? { reasoning: undefined, thinkingBudgets: undefined } : {}),
-            onPayload: async (payload) =>
-              validatePayload((await options.onPayload?.(payload, model)) ?? payload),
-            fetch: communicationFetch(
-              options.fetch ?? globalThis.fetch,
-              model,
-              binding,
-              api === "anthropic-messages" ? normalizeSseResponse : undefined,
-              { ...options.headers },
-            ),
+          const nativeOptions = binding
+            ? {
+                ...options,
+                ...(mappedReasoning ? { reasoning: undefined, thinkingBudgets: undefined } : {}),
+                onPayload: async (payload) =>
+                  validatePayload((await options.onPayload?.(payload, model)) ?? payload),
+                fetch: communicationFetch(
+                  options.fetch ?? globalThis.fetch,
+                  model,
+                  binding,
+                  api === "anthropic-messages" ? normalizeSseResponse : undefined,
+                  { ...options.headers },
+                ),
+              }
+            : options;
+          const openingText =
+            openingAvailable && model.api === "openai-completions"
+              ? openingTaskText(nativeContext)
+              : null;
+          openingAvailable = false;
+          const values =
+            openingText &&
+            (binding
+              ? requestOptions.openingValues(model)
+              : model.reasoning
+                ? { maxOutputTokens: Math.min(768, model.maxTokens ?? 768) }
+                : null);
+          if (!values) return native(nativeModel, nativeContext, nativeOptions);
+          return earlyOpeningStream({
+            createStream: createAssistantMessageEventStream,
+            model,
+            context: nativeContext,
+            options,
+            startMain: (mainContext) => native(nativeModel, mainContext, nativeOptions),
+            startOpening: (signal) =>
+              native(
+                { ...nativeModel, reasoning: false },
+                {
+                  systemPrompt:
+                    "把提供的任务改写成一句自然、具体的第一人称开场计划，包含目标和第一个动作，使用用户的语言。只输出这句话，不执行任务，不分析实现细节，不声称已完成。",
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        {
+                          type: "text",
+                          text: `待改写的任务：\n${openingText}\n\n直接输出一句开场计划，不完成原任务。`,
+                        },
+                      ],
+                      timestamp: Date.now(),
+                    },
+                  ],
+                  tools: [],
+                },
+                {
+                  ...nativeOptions,
+                  signal,
+                  reasoning: undefined,
+                  thinkingBudgets: undefined,
+                  maxTokens: values.maxOutputTokens,
+                  onPayload: binding
+                    ? async (payload) =>
+                        requestOptions.applyOpening(
+                          model,
+                          applyCommunicationPayload(
+                            (await options.onPayload?.(payload, model)) ?? payload,
+                            model,
+                            binding,
+                          ),
+                          values,
+                        )
+                    : options.onPayload,
+                },
+              ),
           });
         },
       });

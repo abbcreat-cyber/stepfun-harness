@@ -51,6 +51,12 @@ export function registerProviderToolIntegrity(pi, isManaged, { maxRepairs = 1 } 
       calls.set(update.contentIndex, entry);
     } else if (update?.type === "toolcall_delta") {
       const entry = calls.get(update.contentIndex) ?? { raw: "", hasRaw: false };
+      // 有些兼容网关在增量结束后重发同一完整参数快照；仅去掉可证明相同的完整对象。
+      // 不能拿 SDK 猜补的 arguments 兜底，冲突快照或重复残片仍由原完整性校验拒绝。
+      if (entry.hasRaw && update.delta === entry.raw) {
+        try { boundedObjectJson(JSON.parse(entry.raw)); return; }
+        catch { /* 不是完整对象，继续按真实增量累积并校验。 */ }
+      }
       entry.hasRaw = true;
       if (
         typeof update.delta !== "string" ||

@@ -1,7 +1,7 @@
 import { isUnboundedContextRuleGoal } from "../desktop-task-contracts.mjs";
 import { desktopPluginReferenceContext, isBarePluginRequest } from "../desktop-plugin-context.mjs";
 import { withCommunicationPolicy } from "../assistant-communication.mjs";
-import { registerAssistantOpeningHook } from "../assistant-opening-hook.mjs";
+import { registerAssistantOpeningHook, withOpeningTimingPolicy } from "../assistant-opening-hook.mjs";
 import { readBuiltinHooks, FIRST_PRINCIPLES_REMINDER } from "../builtin-hooks.mjs";
 import { orderRuntimeNotices, withDesktopInputOrigin } from "../runtime-notice-context.mjs";
 import { registerFileCheckpoints } from "../file-checkpoints.mjs";
@@ -62,12 +62,12 @@ export default function desktopTaskContracts(pi) {
     // 用 SDK 原生每轮上下文消息传能力事实；部分兼容端点不保留 developer 系统消息。
     ...(activated ? { message: { customType: "desktop-selected-plugin", display: false,
       content: `当前工作区：${ctx?.cwd ?? process.cwd()}。plugin:// 只选择插件，不是文件附件。${activated}` } } : {}),
-    systemPrompt:
+    systemPrompt: withOpeningTimingPolicy(
       withDesktopInputOrigin(withCommunicationPolicy(event.systemPrompt)) +
       (hookSettings["first-principles"] ? FIRST_PRINCIPLES_REMINDER : "") +
       (hookSettingsError ? `\n${hookSettingsError}` : "") +
       "\n\n桌面工具：定时任务使用当前 cron 工具。run_command 前台命令省略 timeout_ms 时为 60000 毫秒，长任务显式设置期限，长期服务使用 run_in_background。文件查找优先专用搜索工具；不为普通问答核查插件或规则的安装。" +
-      `\n当前实际工作区：${ctx?.cwd ?? process.cwd()}。路径以工具回执和当前工作区为准，不猜测其他项目路径。`,
+      `\n当前实际工作区：${ctx?.cwd ?? process.cwd()}。路径以工具回执和当前工作区为准，不猜测其他项目路径。`, event.prompt, hookSettings["opening-explanation"] !== false),
     });
   });
   registerAssistantOpeningHook(pi, () => hookSettings["opening-explanation"] !== false);

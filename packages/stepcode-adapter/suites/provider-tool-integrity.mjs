@@ -29,10 +29,11 @@ function inspect({ initial = {}, raw, api = "anthropic-messages", stopReason = "
     ctx,
   );
   if (raw !== undefined)
-    handlers.get("message_update")(
-      { assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta: raw } },
-      ctx,
-    );
+    for (const delta of Array.isArray(raw) ? raw : [raw])
+      handlers.get("message_update")(
+        { assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta } },
+        ctx,
+      );
   return handlers.get("message_end")({ message }, ctx).message;
 }
 
@@ -68,4 +69,18 @@ test("cancelled or failed partial tool streams keep their native terminal reason
     assert.equal(message.stopReason, stopReason);
     assert.equal(message.content.length, 0);
   }
+});
+
+test("增量参数后重复发送同一完整快照可去重，冲突或不完整重复仍拒绝", () => {
+  const repeated = inspect({
+    api: "openai-completions",
+    raw: ['{"path":', '"fixture"}', '{"path":"fixture"}'],
+  });
+  assert.equal(repeated.stopReason, "toolUse");
+  assert.deepEqual(repeated.content[0].arguments, { path: "fixture" });
+  for (const raw of [
+    ['{"path":', '{"path":'],
+    ['{"path":"a"}', '{"path":"b"}'],
+  ])
+    assert.equal(inspect({ api: "openai-completions", raw }).stopReason, "error");
 });
