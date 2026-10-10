@@ -8,6 +8,11 @@ const legacyFiles = [
   ["docs/playwright.md", ["2e41a4f52e321318c3e21cdbbf09d93365d1866c49960496484dcaa158c8aa5c"]],
 ];
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
+const legacyGuidanceHash = "376621aaabfec905b2b8de4f500bc4bea7c131866c42d1958546eaf1777c8ddb";
+const guidancePath = "skills/control-browser/SKILL.md";
+function guidanceHash(text) {
+  return hash(text.replace(/^\uFEFF/, "").replaceAll("\r\n", "\n").replace(/^name:[^\n]*/m, "name: control-browser"));
+}
 /** 只替换已核对的旧官方浏览器封装，不覆盖用户修改或其他插件。 */
 export async function refreshBundledBrowserClient(destination, source, id, manifest) {
   if (id !== "browser-use" || manifest?.stepOfficial !== true) return false;
@@ -17,6 +22,19 @@ export async function refreshBundledBrowserClient(destination, source, id, manif
     if (!legacyFiles[0][1].includes(hash(client))) {
       const bundled = await readFile(join(source, id, legacyFiles[0][0]));
       if (!client.equals(bundled)) return false;
+    }
+    const skillFile = join(destination, guidancePath);
+    const skill = await readFile(skillFile, "utf8").catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    if (skill !== null && guidanceHash(skill) === legacyGuidanceHash) {
+      // 旧安装的只读初始化被拆成多个模型往返；仅迁移已知原版，保留用户编辑和技能命名空间。
+      const bundled = await readFile(join(source, id, guidancePath), "utf8");
+      const name = skill.match(/^name:[^\r\n]*/m)?.[0] ?? "name: control-browser";
+      const replacement = bundled.replace(/^name:[^\r\n]*/m, () => name);
+      if (skill !== replacement) {
+        temp = `${skillFile}.${randomUUID()}.tmp`;
+        await writeFile(temp, replacement);
+        await rename(temp, skillFile); temp = undefined; changed = true;
+      }
     }
     for (const [relative, previousHashes] of legacyFiles) {
       const file = join(destination, relative);

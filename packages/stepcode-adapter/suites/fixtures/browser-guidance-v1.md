@@ -48,49 +48,44 @@ It can tell you which visible page to inspect, but it is not evidence that the u
 
 ## First: select a browser and read its full API once
 
-In the first browser call, combine bootstrap, backend selection, and the read-only startup observation below. On later fresh calls, run the bootstrap and repeat only the same backend selection; the API guide remains in model context. Never create an `iab` alias and then call `browser.*`.
+In the first browser call, run the bootstrap, select the backend, and emit the complete API guide in one go. On later fresh calls, run the bootstrap and repeat only the same backend selection; the API guide remains in model context and does not need to be emitted again. Never create an `iab` alias and then call `browser.*`.
 
 If the user explicitly asks for ZCode's in-app browser:
 
 ```js
 const browser = await agent.browsers.get("iab");
+nodeRepl.write(await browser.documentation());
 ```
 
 If the user explicitly asks for the CLI-managed headless browser and discovery advertises `cdp`:
 
 ```js
 const browser = await agent.browsers.get("cdp");
+nodeRepl.write(await browser.documentation());
 ```
 
 If the task has a target URL but no explicit browser choice, replace the example URL with the real target:
 
 ```js
 const browser = await agent.browsers.getForUrl("https://example.com/");
+nodeRepl.write(await browser.documentation());
 ```
 
 Only when neither a browser nor target URL is specified:
 
 ```js
 const browser = await agent.browsers.getDefault();
-```
-
-After selecting `browser`, append this read-only startup observation in the **same first call**:
-
-```js
 nodeRepl.write(await browser.documentation());
-const controlledTabs = await browser.tabs.list();
-const userTabs = controlledTabs.length === 0 ? await browser.user.openTabs() : null;
-nodeRepl.write({ controlledTabs, userTabs });
 ```
 
-Return the complete guide and lists. Only if the output itself reports truncation may you read it in smaller chunks. The model inspects these observations before the next call chooses, claims, creates, or navigates a tab. This first returned inventory counts as the pre-action observation for that batch. When controlledTabs is empty, the returned userTabs already completes the user-tab check; proceed from those observed facts without another inventory-only call. If controlled tabs exist but none match the target, inspect user tabs before creating one. The guide documents the API, locator workflow and safety rules. Screenshot guidance remains lookup-only for the visual branch below.
+Do not slice, truncate, or summarize it. Only if the tool output itself reports truncation may you read it in smaller chunks. It documents every default method, the Playwright DOM snapshot→locator workflow, the ref/cua/dom_cua compatibility paths, and safety rules. Screenshot instructions are intentionally lookup-only and must not be loaded unless the visual branch below applies.
 
 ## Core workflow
 
 1. Start every browser `js` call with the bootstrap, then assign the selected backend to a local `browser` binding. If the user explicitly asks for ZCode's in-app browser, use `const browser = await agent.browsers.get("iab")`. If they explicitly ask for Chrome, use `await agent.browsers.get("extension")` only when the runtime advertises it. For an unspecified target URL use `await agent.browsers.getForUrl(url)`; with no URL/backend preference use `await agent.browsers.getDefault()`.
 2. `browser.tabs.new()` automatically opens and activates the IAB pane so the user can see browser use. Use the advertised visibility capability only when the task explicitly needs to hide the pane or show it again.
-3. At the start of every logical tab operation batch, obtain the complete current tab list in a read-only observation call
-   (the combined first-call observation above qualifies), so the model sees current ids, URLs, titles, and the active marker. Only in
+3. At the start of every logical tab operation batch, make a dedicated JS call whose result is the complete
+   `await browser.tabs.list()` array, so the model sees all current ids, URLs, titles, and the active marker. Only in
    the next JS call may you match the intended tab by stable id or explicit URL/title facts and call
    `browser.tabs.get(id)` before the first read or action. An internal SDK validation or a list hidden inside the same
    cell does not count as model inspection. `tabs.get(id)` activates that tab in its owning session; it is shown only
@@ -115,7 +110,6 @@ Return the complete guide and lists. Only if the output itself reports truncatio
    A snapshot-proven heading or visible text does not need a `link` or `button` role to be clicked. Do not replace a snapshot-proven `heading` with a guessed `link` role. When the user's request authorizes navigation and that actual heading/text target is unique, click it directly; the DOM event may bubble to a JavaScript card handler.
    The `name` option of `getByRole(...)` accepts a plain string or `RegExp`, including regex values created in the Node REPL VM.
 7. After an action, collect the **cheapest observation that answers your next question** — use a targeted locator state check when possible and a fresh `domSnapshot()` when new locator ground truth is needed. Use at most one state-changing action per observation cycle. An unchanged source-tab URL does not prove the click failed. Judge an action by whether its expected effect appeared, not by whether `browser.tabs.list()` is non-empty. An existing source tab or unrelated controlled tab is not an action effect. The expected effect may be a source-page state change or a tab whose verified URL/title matches the intended result.
-   For a read-only request, once the observation contains all requested page data, answer from it and finish. A final tab inventory is needed only for a task requirement or an unresolved target/effect question.
    When an action may open a popup/new tab and the source tab does not show the expected effect, read `browser.tabs.list()` and `browser.user.openTabs()` unconditionally in the same observation cell. Prefer one combined observation:
 
    ```js
