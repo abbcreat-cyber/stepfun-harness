@@ -59,7 +59,7 @@ export async function uploadComposerAttachment(
     };
   }
   const dataBase64 =
-    "dataBase64" in attachment && attachment.dataBase64
+    "dataBase64" in attachment && typeof attachment.dataBase64 === "string"
       ? attachment.dataBase64
       : "textContent" in attachment && attachment.textContent !== undefined
         ? encodeTextToBase64(attachment.textContent)

@@ -63,7 +63,7 @@ export function createSessionLifecycle(ctx) {
 	 * @param {{ commandId: string, text: string, attachments?: any[], mode?: string, modelSelection?: any, modelSelectionExplicit?: boolean, requestedDelivery?: string, followupMode?: string, kind?: string }} input
 	 */
 	async function admitAndSend({ commandId, text, attachments = [], mode, modelSelection, modelSelectionExplicit = false, requestedDelivery, followupMode, kind = "sendText", clientId, automationId, toolDisallowlist, botDeliveryTarget }) {
-		const images = await ctx.attachmentStore.images(ctx.primarySession.sessionId, attachments);
+		const { images, text: promptText } = await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, attachments, text);
 		const explicitSelection = sanitizeModelSelection(modelSelection);
 		let selection = explicitSelection ?? ctx.primarySession.modelSelection;
 		if (selection && !selection.options && selection.providerId === ctx.primarySession.modelSelection?.providerId && selection.modelId === ctx.primarySession.modelSelection?.modelId && ctx.primarySession.modelSelection.options) selection = { ...selection, options: ctx.primarySession.modelSelection.options };
@@ -120,7 +120,7 @@ export function createSessionLifecycle(ctx) {
 			} else if (entry.decision.route === "steer") {
 				// 判忙到 RPC 到达之间原任务可能结束；裸 steer 会滞留空闲池。
 				// prompt 的 streamingBehavior 在底座内裁决：仍忙则插话，已闲则直接开启新轮。
-				entry.dispatchedText = expandWorkflowCommand(text);
+				entry.dispatchedText = expandWorkflowCommand(promptText);
 				// 同选择 transport carry 不改 active；SDK 已转 idle 时也能安全准备新轮。
 				await ctx.carryPrompt(client, currentSelection, commandId);
 				await client.prompt(entry.dispatchedText, { images, streamingBehavior: "steer" });
@@ -139,7 +139,8 @@ export function createSessionLifecycle(ctx) {
 				await ctx.preparePrompt(client, selection, commandId);
 				// prompt ACK 可能先于 agent_start；先占运行槽，下一次发送才不会误判空闲。
 				ctx.turnBusy = true;
-				await client.prompt(expandWorkflowCommand(text), { images });
+				entry.dispatchedText = expandWorkflowCommand(promptText);
+				await client.prompt(entry.dispatchedText, { images });
 				ctx.ledger.markSubmitted(commandId);
 			}
 		} catch (error) {

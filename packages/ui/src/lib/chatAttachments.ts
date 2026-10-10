@@ -16,7 +16,6 @@ import {
   countClipboardTextLines,
   createClipboardTextAttachmentFilename,
   inferAttachmentMimeType,
-  isTextLikeAttachment,
 } from "@/lib/chatAttachmentMetadata.js";
 
 export {
@@ -39,7 +38,6 @@ const INLINE_VIDEO_ATTACHMENT_MAX_BYTES = Math.min(
   VIDEO_INPUT_MAX_BYTES,
   PROTOCOL_V4_LIMITS.attachmentMaxBytes,
 );
-const INLINE_TEXT_ATTACHMENT_MAX_CHARS = 64 * 1024;
 
 export type ChatComposerAttachmentSourceKind = "clipboard-text";
 
@@ -250,16 +248,18 @@ export async function serializeChatComposerAttachment(
     };
   }
 
-  const textContent =
-    attachment.file && isTextLikeAttachment(attachment)
-      ? await readAttachmentText(attachment.file)
-      : undefined;
+  // 无本机路径的 Word/表格曾只留下元信息；文本也会被截断后当作原文件上传。
+  // 在现有 V4 上限内统一保留原始字节，交给同一个分块上传事务。
+  if (attachment.sizeBytes > PROTOCOL_V4_LIMITS.attachmentMaxBytes) {
+    throw new Error("proto.payloadTooLarge");
+  }
+  const dataBase64 = await readAttachmentBase64(attachment);
   return {
     kind: "file",
     filename: attachment.filename,
     mimeType,
     sizeBytes: attachment.sizeBytes,
-    ...(textContent !== undefined ? { textContent } : {}),
+    dataBase64,
   };
 }
 
@@ -290,11 +290,4 @@ export function isPdfChatComposerAttachment(attachment: ChatComposerAttachment):
 /** 图片与视频同属媒体组：输入框与消息流统一按媒体卡片渲染。 */
 export function isMediaChatComposerAttachment(attachment: ChatComposerAttachment): boolean {
   return isImageChatComposerAttachment(attachment) || isVideoChatComposerAttachment(attachment);
-}
-
-async function readAttachmentText(file: File): Promise<string> {
-  const text = await file.text();
-  return text.length > INLINE_TEXT_ATTACHMENT_MAX_CHARS
-    ? `${text.slice(0, INLINE_TEXT_ATTACHMENT_MAX_CHARS)}\n\n[内容过长，已截断]`
-    : text;
 }

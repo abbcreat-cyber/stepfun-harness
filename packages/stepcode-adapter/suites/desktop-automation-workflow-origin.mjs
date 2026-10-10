@@ -38,7 +38,7 @@ for (const startsAutomatic of [true, false])
       broadcastConversationSnapshot() {},
       broadcastSessionsIndexUpsert() {},
       scheduleQueueDrain() {},
-      attachmentStore: { images: async () => [] },
+      attachmentStore: { prepare: async (_id, _attachments, text) => ({ images: [], text }) },
       runInputOperation: async (fn) => fn(),
     };
     Object.assign(ctx, createSessionLifecycle(ctx), createClientRuntime(ctx));

@@ -347,7 +347,7 @@ test("workflow completion notification inherits automatic scope through the exis
     broadcastConversationSnapshot() {},
     broadcastSessionsIndexUpsert() {},
     scheduleQueueDrain() {},
-    attachmentStore: { images: async () => [] },
+    attachmentStore: { prepare: async (_id, _attachments, text) => ({ images: [], text }) },
     runInputOperation: async (fn) => fn(),
     runWithPreparedClient: async (_options, fn) => fn(ctx.client),
   };

@@ -17,6 +17,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchBridge } from "./zcode-bridge-launch.mjs";
 import { waitForExit } from "./helpers.mjs";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+
+test("bridge: CSV upload reaches the model as a readable file while UI retains original text and reference", async () => {
+ const stateDir=mkdtempSync(join(tmpdir(),"bridge-csv-")), b=launchBridge([],{},{stateDir});
+ try {
+  b.send({id:1,method:"session/create",params:{sessionId:"csv-session",workspace:{workspacePath:stateDir}}});await b.waitFor(f=>f.id===1);
+  const bytes=Buffer.from("项目,费用\n车票,50\n餐费,30"), p={sessionId:"csv-session",connectionId:"file-c",uploadId:"csv-upload",fileName:"旅行 报销.csv",mime:"text/csv",totalBytes:bytes.length,totalChunks:1,checksum:"sha256:"+createHash("sha256").update(bytes).digest("hex")};
+  b.send({id:2,method:"v4/attachment/begin",params:p});assert.equal((await b.waitFor(f=>f.id===2)).result.state,"staging");
+  b.send({id:3,method:"v4/attachment/chunk",params:{...p,chunkIndex:0,dataBase64:bytes.toString("base64")}});await b.waitFor(f=>f.id===3);
+  b.send({id:4,method:"v4/attachment/commit",params:p});const ref=(await b.waitFor(f=>f.id===4)).result.ref;
+  b.send({id:5,method:"v4/conversation/subscribe",params:{topic:"conversation/csv-session",connectionId:"file-c",clientMode:"desktop-continuous"}});await b.waitFor(f=>f.id===5);
+  const text="请计算附件费用";
+  b.send({id:6,method:"v4/command",params:{commandId:"csv-send",sessionId:"csv-session",type:"sendText",payload:{text,attachments:[{ref,fileName:p.fileName,mime:p.mime,bytes:bytes.length}]}}});
+  await b.waitFor(f=>f.params?.type==="turn.completed");
+  const frame=await b.waitFor(f=>f.params?.frame?.payload?.snapshot?.rows?.window?.some(r=>r.kind==="assistantText"&&r.state==="complete"&&r.text.includes('"mime":"text/csv"')));
+  const rows=frame.params.frame.payload.snapshot.rows.window, input=rows.find(r=>r.kind==="userInput"), reply=rows.find(r=>r.kind==="assistantText");
+  assert.equal(input.text,text);assert.equal(input.attachments[0].ref,ref);
+  const files=JSON.parse(reply.text.slice(reply.text.lastIndexOf('\n')+1));
+  assert.equal(await readFile(files[0].path,"utf8"),bytes.toString());
+ } finally {b.child.kill();await waitForExit(b.child,{label:"CSV bridge"});rmSync(stateDir,{recursive:true,force:true});}
+});
 
 test('bridge: pasted image reaches RPC and remains readable after restart without a model call',async()=>{
  const {createHash}=await import('node:crypto');const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';const bytes=Buffer.from(png,'base64');const stateDir=mkdtempSync(join(tmpdir(),'bridge-image-'));const b=launchBridge([],{},{stateDir});let reader;

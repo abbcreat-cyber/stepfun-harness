@@ -341,6 +341,7 @@ var FALLBACK_MANIFEST = {
         "getByTestId",
         "getByText",
         "innerText",
+    "inputValue",
         "isEnabled",
         "isVisible",
         "last",
@@ -916,6 +917,7 @@ var publicMembers = {
     "getByTestId",
     "getByText",
     "innerText",
+    "inputValue",
     "isEnabled",
     "isVisible",
     "last",
@@ -1154,6 +1156,13 @@ var PlaywrightLocator = class _PlaywrightLocator {
   }
   innerText({ timeoutMs } = {}) {
     return this.value("innerText", { timeoutMs });
+  }
+  inputValue({ timeoutMs } = {}) {
+    return this.evaluate((element) => {
+      const control = element instanceof HTMLLabelElement ? element.control : element;
+      if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)) throw new Error("inputValue requires an input, textarea or select element");
+      return control.value;
+    }, undefined, { timeoutMs });
   }
   getAttribute(name, { timeoutMs } = {}) {
     if (!name)
@@ -2147,7 +2156,9 @@ var BrowsersFacade = class {
     if (url && options.reuseTab !== false) {
       const reusable = await browser.tabs.reuse(url).catch(() => void 0);
       if (reusable) {
-        await reusable.goto(url);
+        const currentUrl = await reusable.url();
+        const sameUrl = currentUrl === url || (currentUrl && URL.canParse(currentUrl) && URL.canParse(url) && new URL(currentUrl).href === new URL(url).href);
+        if (!sameUrl) await reusable.goto(url);
         return reusable;
       }
     }

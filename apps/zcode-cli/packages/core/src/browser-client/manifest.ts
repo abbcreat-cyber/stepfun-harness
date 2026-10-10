@@ -364,6 +364,7 @@ const FALLBACK_MANIFEST: BrowserApiManifest = {
         "getByTestId",
         "getByText",
         "innerText",
+        "inputValue",
         "isEnabled",
         "isVisible",
         "last",

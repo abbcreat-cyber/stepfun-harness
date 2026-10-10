@@ -94,7 +94,7 @@ test("managed: 调度前配置失败保留消息，投递超时禁止重复发�
   let sent = 0;
   const ctx = { ledger, primarySession: {sessionId:"managed"}, turnBusy:false,
    persistConversation() {}, broadcastConversationSnapshot() {}, ensureClient: async () => {},
-   attachmentStore: {images: async () => []}, hydrateStatistics: async () => {},
+   attachmentStore: {prepare: async (_id, _attachments, text) => ({ images: [], text })}, hydrateStatistics: async () => {},
    applyModelSelection: async () => {if(preflight) throw Error("配置失败");},
    preparePrompt: async () => {}, discardPreparedPrompt: async () => {},
    client: {prompt: async () => {sent++; throw Object.assign(Error("timeout"), {stepTimeout:true});}},
@@ -131,7 +131,7 @@ for (const order of ["start-before-ack", "start-after-ack", "delivered-before-ac
  test(`append: 结束与 ACK 边界 ${order} 只归属一次，队列不复活`, async () => {
   const ctx = {ledger:new InputLedger(), primarySession:{sessionId:"boundary",modelSelection:{providerId:"mock",modelId:"mock-mini"}},
    turnBusy:true,currentTurnId:"old-run",conversationRows:[],v4Subscriptions:new Map(),streamingText:"",eventSeq:0,stateRevision:0,
-   attachmentStore:{images:async()=>[]},ensureClient:async()=>{},hydrateStatistics:async()=>{},
+   attachmentStore:{prepare: async (_id, _attachments, text) => ({ images: [], text: `${text}\n附件清单：排队费用.csv` })},ensureClient:async()=>{},hydrateStatistics:async()=>{},
    sessionStatistics:()=>({handle:()=>false}),scheduleQueueDrain(){},notify(){},persistPrimarySummary(){},broadcastSessionsIndexUpsert(){},
   };
   Object.assign(ctx,createProjection(ctx));
@@ -139,6 +139,7 @@ for (const order of ["start-before-ack", "start-after-ack", "delivered-before-ac
   ctx.client = {
    steer:async()=>{forwarded="raw-steer";},
    prompt:async(text,options)=>{
+    assert.equal(text,"结束边界追加\n附件清单：排队费用.csv");
     forwarded=options.streamingBehavior;
     if(order==="delivered-before-ack") {
      ctx.projectStepEvent({type:"message_start",message:{role:"user",content:[{type:"text",text}]}});
@@ -160,6 +161,7 @@ for (const order of ["start-before-ack", "start-after-ack", "delivered-before-ac
   }
   const rows=ctx.conversationRows.filter(r=>r.kind==="userInput");
   assert.equal(rows.length,1,"ACK 与 agent_start 的顺序不应重复追加正文");
+  assert.equal(rows[0].text,"结束边界追加","底座附件清单不应污染 UI 正文或破坏插话归属");
   assert.equal(rows[0].turnId,ctx.currentTurnId,"正文必须归属实际消费它的 run");
   assert.equal(ctx.ledger.queueItems().length,0,"已消费追加不能在晚到 ACK 后复活");
   ctx.flushStreamDeltas();

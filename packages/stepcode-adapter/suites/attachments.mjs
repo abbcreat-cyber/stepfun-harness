@@ -1,12 +1,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { AttachmentStore } from "../src/attachments.mjs";
 export const PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=";
+test("ordinary and empty file attachments survive restart and prepare readable scoped references", async t => {
+  const root = await mkdtemp(join(tmpdir(), "step-files-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const [fileName, mime, text] of [["旅行 报销.csv", "text/csv", "项目,费用\n车票,50\n餐费,30"], ["empty.txt", "text/plain", ""]]) {
+    let store = new AttachmentStore(root);
+    const bytes = Buffer.from(text), p = { sessionId: "owner", connectionId: "c", uploadId: fileName,
+      fileName, mime, totalBytes: bytes.length, totalChunks: bytes.length ? 1 : 0, checksum: "sha256:" + createHash("sha256").update(bytes).digest("hex") };
+    await store.begin(p);
+    if (bytes.length) store.chunk({ ...p, chunkIndex: 0, dataBase64: bytes.toString("base64") });
+    const { ref } = await store.commit(p);
+    const attachment = { ref, fileName, mime, bytes: bytes.length };
+    store = new AttachmentStore(root);
+    const prepared = await store.prepare("owner", [attachment], "请读取附件");
+    assert.deepEqual(prepared.images, []);
+    assert.equal(await readFile(prepared.files[0].path, "utf8"), text);
+    assert.equal(prepared.files[0].name, fileName);
+    assert.ok(prepared.text.startsWith("请读取附件\n"));
+    assert.ok(prepared.text.includes(JSON.stringify(prepared.files)));
+    await assert.rejects(store.prepare("another", [attachment], ""), /当前会话/);
+    const local = await store.prepare("desktop", [{ ref: prepared.files[0].path, mime, fileName }], "读取已选择的文件");
+    assert.equal(await readFile(local.files[0].path, "utf8"), text);
+    await assert.rejects(store.prepare("desktop", [{ ref: root, mime, fileName }]), /普通文件/);
+  }
+});
 test("image chunks, retries, checksum, persisted send and authorized preview", async () => {
   const root = await mkdtemp(join(tmpdir(), "step-images-"));
   let store = new AttachmentStore(root);

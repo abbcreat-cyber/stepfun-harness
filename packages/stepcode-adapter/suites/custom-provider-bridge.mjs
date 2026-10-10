@@ -31,7 +31,7 @@ async function pluginRefreshFixture(t) {
     spawnCommand: mockCommand, turnBusy: false, projectStepEvent() {},
     primarySession: { sessionId: "refresh", workspace: { workspacePath: root }, modelSelection: selection },
     conversationRows: [{ kind: "assistantText", text: "保留历史投影" }],
-    ledger: new InputLedger(), attachmentStore: { images: async () => [] },
+    ledger: new InputLedger(), attachmentStore: { prepare: async (_id, _attachments, text) => ({ images: [], text }) },
     hydrateStatistics: async () => {}, persistConversation() {}, persistPrimarySummary() {},
     broadcastConversationSnapshot() {}, broadcastSessionsIndexUpsert() {}, nextRowId: () => "row",
   };

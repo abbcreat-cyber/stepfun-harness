@@ -149,13 +149,18 @@
           "kind": "method",
           "signature": "claimTab(tab: string | BrowserUserTabInfo): Promise<Tab>",
           "command": "claimTab",
-          "unsupportedByDefaultIn": ["iab", "cdp"]
+          "unsupportedByDefaultIn": [
+            "iab",
+            "cdp"
+          ]
         },
         {
           "name": "history",
           "kind": "method",
           "signature": "history(options: BrowserHistoryOptions): Promise<BrowserHistoryEntry[]>",
-          "unsupportedByDefaultIn": ["iab"]
+          "unsupportedByDefaultIn": [
+            "iab"
+          ]
         },
         {
           "name": "openTabs",
@@ -196,7 +201,10 @@
           "kind": "method",
           "signature": "finalize(options: FinalizeTabsOptions): Promise<void>",
           "command": "finalizeTabs",
-          "unsupportedByDefaultIn": ["iab", "cdp"]
+          "unsupportedByDefaultIn": [
+            "iab",
+            "cdp"
+          ]
         }
       ]
     },
@@ -288,21 +296,30 @@
           "signature": "finalize(options?: { deliverable?: boolean }): Promise<void>",
           "command": "finalize",
           "documented": false,
-          "unsupportedByDefaultIn": ["iab", "cdp"]
+          "unsupportedByDefaultIn": [
+            "iab",
+            "cdp"
+          ]
         },
         {
           "name": "markDeliverable",
           "kind": "method",
           "signature": "markDeliverable(): Promise<void>",
           "command": "markDeliverable",
-          "unsupportedByDefaultIn": ["iab", "cdp"]
+          "unsupportedByDefaultIn": [
+            "iab",
+            "cdp"
+          ]
         },
         {
           "name": "markHandoff",
           "kind": "method",
           "signature": "markHandoff(): Promise<void>",
           "command": "markHandoff",
-          "unsupportedByDefaultIn": ["iab", "cdp"]
+          "unsupportedByDefaultIn": [
+            "iab",
+            "cdp"
+          ]
         },
         {
           "name": "cua",
@@ -328,21 +345,30 @@
           "kind": "method",
           "signature": "start(options?: BrowserRecordingOptions): Promise<BrowserRecordingJob>",
           "command": "recordingStart",
-          "unsupportedByDefaultIn": ["extension", "cdp"]
+          "unsupportedByDefaultIn": [
+            "extension",
+            "cdp"
+          ]
         },
         {
           "name": "status",
           "kind": "method",
           "signature": "status(recordingId: string, options?: { outputPath?: string }): Promise<BrowserRecordingJob>",
           "command": "recordingStatus",
-          "unsupportedByDefaultIn": ["extension", "cdp"]
+          "unsupportedByDefaultIn": [
+            "extension",
+            "cdp"
+          ]
         },
         {
           "name": "cancel",
           "kind": "method",
           "signature": "cancel(recordingId: string): Promise<BrowserRecordingJob>",
           "command": "recordingCancel",
-          "unsupportedByDefaultIn": ["extension", "cdp"]
+          "unsupportedByDefaultIn": [
+            "extension",
+            "cdp"
+          ]
         }
       ]
     },
@@ -426,7 +452,9 @@
             },
             {
               "signature": "waitForEvent(event: \"filechooser\", options?): Promise<PlaywrightFileChooser>",
-              "unsupportedByDefaultIn": ["iab"]
+              "unsupportedByDefaultIn": [
+                "iab"
+              ]
             }
           ]
         },
@@ -669,6 +697,11 @@
           "kind": "method",
           "signature": "waitFor(options: LocatorWaitForOptions): Promise<void>",
           "command": "playwright"
+        },
+        {
+          "name": "inputValue",
+          "kind": "method",
+          "signature": "inputValue(options?: { timeoutMs?: number }): Promise<string>"
         }
       ]
     },
@@ -695,7 +728,9 @@
           "kind": "method",
           "signature": "setFiles(files, options?): Promise<void>",
           "command": "playwright",
-          "unsupportedByDefaultIn": ["iab"]
+          "unsupportedByDefaultIn": [
+            "iab"
+          ]
         }
       ]
     },
@@ -743,7 +778,9 @@
           "name": "downloadMedia",
           "kind": "method",
           "signature": "downloadMedia(options: CuaDownloadMediaOptions): Promise<void>",
-          "unsupportedByDefaultIn": ["iab"],
+          "unsupportedByDefaultIn": [
+            "iab"
+          ],
           "documented": false
         },
         {
@@ -789,7 +826,9 @@
           "name": "downloadMedia",
           "kind": "method",
           "signature": "downloadMedia(options: DomDownloadMediaOptions): Promise<void>",
-          "unsupportedByDefaultIn": ["iab"],
+          "unsupportedByDefaultIn": [
+            "iab"
+          ],
           "documented": false
         },
         {

@@ -19,7 +19,7 @@ export function createManagedQueue(ctx) {
   ctx.persistConversation();
   let promptSent = false;
   try {
-   const images = await ctx.attachmentStore.images(ctx.primarySession.sessionId, entry.attachments);
+   const { images, text: promptText } = await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, entry.attachments, entry.text);
    const selection = entry.modelSelection ?? ctx.primarySession.modelSelection;
    await ctx.runWithPreparedClient({ selection, requireIdle: true, selectModel: true }, async client => {
    const state = await client.getState();
@@ -31,7 +31,7 @@ export function createManagedQueue(ctx) {
    await ctx.preparePrompt(client, selection, entry.commandId);
    ctx.turnBusy = true;
    promptSent = true;
-   try { await client.prompt(expandWorkflowCommand(entry.text), { images }); }
+   try { entry.dispatchedText = expandWorkflowCommand(promptText); await client.prompt(entry.dispatchedText, { images }); }
    catch (error) {
     if (error.stepRejected === true) {
      ctx.turnBusy = false;

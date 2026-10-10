@@ -1108,11 +1108,13 @@ export class BrowsersFacade {
     if (url && options.reuseTab !== false) {
       // 已知问题：模型每次 open() 都新开 tab，任务结束后内置浏览器堆满标签页。
       // 默认按 URL 复用已有 agent-owned tab（tabs.list 只含本 scope 的 owned tabs，
-      // 不会误接管用户 tab）：激活给用户并在原地 goto 刷新；复用链路任何失败都
-      // 降级 newTab。需要并排独立 tab 时模型可显式传 reuseTab: false。
+      // 不会误接管用户 tab）：相同完整 URL 只激活，避免复核时清空表单/交互状态；
+      // 复用查询失败才降级 newTab。需要并排独立 tab 时可显式传 reuseTab: false。
       const reusable = await browser.tabs.reuse(url).catch(() => undefined);
       if (reusable) {
-        await reusable.goto(url);
+        const currentUrl = await reusable.url();
+        const sameUrl = currentUrl === url || (currentUrl && URL.canParse(currentUrl) && URL.canParse(url) && new URL(currentUrl).href === new URL(url).href);
+        if (!sameUrl) await reusable.goto(url);
         return reusable;
       }
     }

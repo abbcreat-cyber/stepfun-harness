@@ -61,6 +61,7 @@ const publicMembers: Record<string, ReadonlySet<string>> = {
     "getByTestId",
     "getByText",
     "innerText",
+    "inputValue",
     "isEnabled",
     "isVisible",
     "last",
@@ -397,6 +398,16 @@ export class PlaywrightLocator {
 
   innerText({ timeoutMs }: { timeoutMs?: number } = {}): Promise<string> {
     return this.value("innerText", { timeoutMs });
+  }
+
+  inputValue({ timeoutMs }: { timeoutMs?: number } = {}): Promise<string> {
+    // 复用已有定位器 evaluate 通道，读取当前属性值，而非可能过期的 value HTML 属性。
+    return this.evaluate((element) => {
+      const control = element instanceof HTMLLabelElement ? element.control : element;
+      if (!(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement))
+        throw new Error("inputValue requires an input, textarea or select element");
+      return control.value;
+    }, undefined, { timeoutMs });
   }
 
   getAttribute(name: string, { timeoutMs }: { timeoutMs?: number } = {}): Promise<string | null> {

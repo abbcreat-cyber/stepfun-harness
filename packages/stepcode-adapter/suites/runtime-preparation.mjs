@@ -28,7 +28,7 @@ async function fixture(t) {
     spawnCommand: [process.execPath, fileURLToPath(new URL("../mock/step-rpc-mock.mjs", import.meta.url))],
     turnBusy: false, projectStepEvent() {}, primarySession: { sessionId: "runtime", workspace: { workspacePath: root }, modelSelection: selection },
     conversationRows: [{ kind: "assistantText", text: "history" }], ledger: new InputLedger(),
-    attachmentStore: { images: async () => [] }, hydrateStatistics: async () => {}, persistConversation() {}, persistPrimarySummary() {},
+    attachmentStore: { prepare: async (_id, _attachments, text) => ({ images: [], text }) }, hydrateStatistics: async () => {}, persistConversation() {}, persistPrimarySummary() {},
     broadcastConversationSnapshot() {}, broadcastSessionsIndexUpsert() {}, nextRowId: () => "row",
   };
   Object.assign(ctx, createClientRuntime(ctx), createSessionLifecycle(ctx), createManagedQueue(ctx));

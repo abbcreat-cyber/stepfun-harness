@@ -7,6 +7,8 @@ Node REPL VM. Prefer the matcher form that directly reflects the accessible-name
 
 ## Snapshot is the locator source of truth
 
+Use `locator.inputValue()` to read the current value of an input, textarea or select after filling it. Reopening the exact same URL with `agent.browsers.open(url)` preserves page state; use `tab.goto(url)` for an intentional refresh.
+
 - Keep and reuse the latest relevant `tab.playwright.domSnapshot()` until navigation or a UI change makes it stale.
 - Construct locators only from role, accessible name, text, placeholder, `data-*`, `href`, or other attributes that actually appear in that snapshot.
 - Never guess a label, accessible name, placeholder, selector, URL pattern, or element type. A guessed locator is not an exploratory probe.

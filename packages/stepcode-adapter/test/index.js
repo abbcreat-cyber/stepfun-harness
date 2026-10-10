@@ -35,6 +35,7 @@ import "../suites/plugins.mjs";
 import "../suites/official-plugins.mjs";
 import "../suites/session-plugin-catalog.mjs";
 import "../suites/embedded-browser.mjs";
+import "../suites/browser-open-retention.mjs";
 
 import "../suites/workflow.mjs";
 import "../suites/workflow-snippet-lifecycle.mjs";
