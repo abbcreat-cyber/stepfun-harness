@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 export const CHECKPOINT = "desktop-file-checkpoint-v1";
 export const hashBytes = bytes => createHash("sha256").update(bytes).digest("hex");
 
-export async function readImage(path) {
+export async function readImage(path, { includeData = true } = {}) {
   // 回退不能沿符号链接写到另一位置；父目录 junction 同样必须拒绝。
   let current = path;
   while (current !== parse(current).root) {
@@ -19,7 +19,8 @@ export async function readImage(path) {
     const info = await lstat(path);
     if (!info.isFile() || info.size > 8 * 1024 * 1024) throw new Error("unsupported_checkpoint: file type or size");
     const data = await readFile(path);
-    return { hash: hashBytes(data), data: data.toString("base64") };
+    // 冲突检查只需要最新哈希；完整快照仍供撤销/回滚使用，避免无用的 Base64 字符串。
+    return { hash: hashBytes(data), ...(includeData ? { data: data.toString("base64") } : {}) };
   } catch (error) {
     if (error.code === "ENOENT") return { hash: "missing", data: null };
     throw error;
@@ -27,10 +28,10 @@ export async function readImage(path) {
 }
 
 export async function putImage(path, image, expectedHash) {
-  const expected = expectedHash ?? (await readImage(path)).hash;
+  const expected = expectedHash ?? (await readImage(path, { includeData: false })).hash;
   async function mutate(operation) {
     for (let attempt = 0; ; attempt++) {
-      if ((await readImage(path)).hash !== expected) throw new Error("文件在撤销期间发生变化，请重新预览");
+      if ((await readImage(path, { includeData: false })).hash !== expected) throw new Error("文件在撤销期间发生变化，请重新预览");
       try { await operation(); return; }
       catch (error) {
         // Windows 预览/索引读取的共享锁可能短暂阻止原子替换；不删除原文件，
@@ -109,7 +110,7 @@ export async function checkpointPreview(files) {
     if (calls.some(c => !c.before || c.after === undefined)) reason = "checkpoint_missing";
     else if (calls.some((c, i) => c.error || c.overlap || (i && calls[i - 1].after !== c.before.hash))) reason = "unsupported_checkpoint";
     else {
-      try { currentHash = (await readImage(file.path)).hash; if (currentHash !== last.after) reason = "external_modified"; }
+      try { currentHash = (await readImage(file.path, { includeData: false })).hash; if (currentHash !== last.after) reason = "external_modified"; }
       catch { reason = "file_read_failed"; }
     }
     if (reason) preview.unsafeFiles.push({ ...common, reason, ...(currentHash ? { currentHash } : {}), ...(last.after ? { expectedHash: last.after } : {}) });
@@ -151,7 +152,7 @@ export async function applyCheckpoints(files) {
   }
   async function undo() {
     for (const file of [...changed].reverse()) {
-      if ((await readImage(file.path)).hash !== file.restored) throw new Error("回退恢复期间文件已被外部修改；保留快照，请人工检查");
+      if ((await readImage(file.path, { includeData: false })).hash !== file.restored) throw new Error("回退恢复期间文件已被外部修改；保留快照，请人工检查");
       await putImage(file.path, file.before, file.restored);
     }
   }

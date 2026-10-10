@@ -24,9 +24,10 @@ export function createManagedQueue(ctx) {
   }
   // 发请求前先置 submitted，agent_start 早于 RPC ACK 时仍能按 commandId 正确归属。
   entry.state = "submitted";
-  ctx.persistConversation();
   let promptSent = false;
   try {
+   // 保存失败时还未向底座发送，必须走同一回退分支，不能留下无法重试的 submitted。
+   ctx.persistConversation();
    const { images, text: promptText } = await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, entry.attachments, entry.text);
    const selection = entry.modelSelection ?? ctx.primarySession.modelSelection;
    await ctx.runWithPreparedClient({ selection, requireIdle: true, selectModel: true }, async client => {
