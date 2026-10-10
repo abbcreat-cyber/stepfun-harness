@@ -43,7 +43,7 @@ export function createSessionsIndex(ctx) {
 		return {};
 	}
 
-	function persistSessionSummary(workspacePath, summary, identity = false) {
+	function persistSessionSummary(workspacePath, summary, identity = false, strict = false) {
 		try {
 			// 墓碑防复活（写前过滤）：已删除的会话即便因跨进程竞态短暂成为某桥接进程的
 			// primary（其内存 live upsert 可能短暂复活条目），也不得再写进持久化索引。
@@ -68,6 +68,7 @@ export function createSessionsIndex(ctx) {
 			});
 		} catch (error) {
 			log(`sessions-index persist 失败: ${error?.message ?? error}`);
+			if (strict) throw error;
 		}
 	}
 

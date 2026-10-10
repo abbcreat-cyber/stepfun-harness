@@ -116,6 +116,7 @@ interface InitAutoUpdaterOptions {
   openStatusWindow?: () => void;
   enabled?: boolean;
   onBeforeQuitAndInstall?: () => void | Promise<void>;
+  getRunningTaskCount?: () => number;
   settingService?: SettingServiceLike;
   locale?: Locale;
   updateFeedSource?: RuntimeUpdateFeedSource;
@@ -1483,10 +1484,11 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
       app.getVersion(),
       async () => {
         await options.onBeforeQuitAndInstall?.();
-        autoUpdater.quitAndInstall(false, true);
+        // 用户已在下载前确认；静默安装并重开，不能再弹安装向导要求二次操作。
+        autoUpdater.quitAndInstall(true, true);
       },
       state => { readyUpdateVersion = state.kind === "update-downloaded" ? state.version : null; setAutoUpdaterMenuState(state); },
-      { prepareDesktop: info => preparedDownloads.prepare(info), usePreparedDesktop: () => preparedDownloads.usePrepared() },
+      { prepareDesktop: info => preparedDownloads.prepare(info), usePreparedDesktop: () => preparedDownloads.usePrepared(), getRunningTaskCount: options.getRunningTaskCount },
     );
     ipcMain.handle(PlatformChannels.ManageHarnessUpdate, (_event, request) => harnessUpdates!.command(request));
     // 旧更新按钮也进入统一界面，不能误把软件版本交给底座安装器。

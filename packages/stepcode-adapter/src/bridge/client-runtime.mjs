@@ -22,6 +22,7 @@ import { extensionConfigSignature } from "../extension-config-signature.mjs";
 import { desktopAutomationEnvironment } from "../desktop-automation.mjs";
 import { log } from "./logging.mjs";
 import { isWorkflowNoticeCurrent } from "./workflow-notices.mjs";
+import { sessionStartupCommand } from "../session-startup-command.mjs";
 
 /** @param {any} ctx 共享桥接状态（options/spawnCommand/primarySession/projectStepEvent 等） */
 export function createClientRuntime(ctx) {
@@ -154,7 +155,7 @@ export function createClientRuntime(ctx) {
 		}).then(relay => { ctx.embeddedBrowserRelay = relay; return relay; });
 		return embeddedBrowserRelayPromise;
 	}
-	async function startClient(env) {
+	async function startClient(env, startupSessionFile) {
 		env ??= await clientEnvironment();
 		if (env.STEP_BACKEND === "stepcode-local") {
 			if (!env.STEPCODE_STORAGE_ROOT_DIR) throw new Error("Desktop automation storage root is unavailable");
@@ -165,7 +166,7 @@ export function createClientRuntime(ctx) {
 		const relay = await ensureBrowserRelay();
 		if (!ctx.client) {
 			ctx.client = new StepCodeRpcClient({
-				command: ctx.spawnCommand,
+				command: sessionStartupCommand(ctx.spawnCommand, startupSessionFile),
 				onSpawn: relay ? pid => relay.bindPid(pid) : undefined,
 				communicationMode: ctx.options.communicationMode ?? "required",
 				env,
@@ -235,9 +236,9 @@ export function createClientRuntime(ctx) {
 		}
 	}
 
-	async function ensureStarted() {
+	async function ensureStarted(startupSessionFile) {
 		if (!ctx.clientStartPromise) {
-			ctx.clientStartPromise = startClient().catch(async error => {
+			ctx.clientStartPromise = startClient(undefined, startupSessionFile).catch(async error => {
 				// 初次启动失败没有已恢复历史，丢弃半成品，下一次读取修正后的真实 env/config。
 				await ctx.client?.stop().catch(() => {});
 				ctx.client = null; ctx.clientStartPromise = null;
@@ -247,13 +248,13 @@ export function createClientRuntime(ctx) {
 		await ctx.clientStartPromise;
 	}
 
-	async function prepareClient({ selection = ctx.primarySession?.modelSelection, requireIdle = false, selectModel = false, refreshAll = false, reset = false, sessionId, workspace } = {}) {
+	async function prepareClient({ selection = ctx.primarySession?.modelSelection, requireIdle = false, selectModel = false, refreshAll = false, reset = false, sessionId, workspace, startupSessionFile } = {}) {
 		if (reset || !ctx.clientStartPromise) await assertHostModelAdmission(ctx, { sessionId, workspace });
 		if (reset) {
 			if (refreshBlocked() || (ctx.client && ctx.client.isRunning?.() !== false && (await ctx.client.getState()).isStreaming)) throw new Error("当前对话仍在运行，不能新建会话");
 			await ctx.client?.stop(); ctx.client = null; ctx.clientStartPromise = null;
 		}
-		await ensureStarted();
+		await ensureStarted(startupSessionFile);
 		if (refreshBlocked()) {
 			if (requireIdle) throw new Error("当前对话仍在运行，不能修改模型连接或思考档位");
 			return ctx.client;

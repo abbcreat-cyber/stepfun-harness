@@ -62,9 +62,8 @@ export function makeConversationSnapshot({
 		availability: {
 			// 能力声明必须对应实际处理器；压缩契约见 docs/specs/manual-compaction.md。
 			// allowed=true 的键必须有 bin/zcode-bridge-session.mjs 的 v4/command 处理分支
-			// （suites/capability-consistency.mjs 静态断言防回退）。forkAssistant
-			// 无处理器分支——声明可用会让宿主发出必被 -32602 拒绝的命令，属协议级误报。
-			fork: { allowed: false, reasonCode: "stepcode.community.forkNotWired" },
+			// （suites/capability-consistency.mjs 静态断言防回退）。行级 canFork 来自原生稳定锚点。
+			fork: { allowed: !readOnly && !running, ...(readOnly || running ? { reasonCode: "guard.sessionBusy" } : {}) },
 			compact: { allowed: true },
 			// switchModelConfig/setFollowupMode 有真实处理器（模型经 set_model、
 			// 档位经 set_thinking_level、跟进模式进 primarySession.followupMode）。
@@ -97,7 +96,12 @@ export function makeConversationSnapshot({
 		goal: null,
 		plan: { items: [], updatedAt: Date.now() },
 		rows: {
-			window: rows,
+			window: readOnly || running ? rows.map(row => {
+				if (!row.actions?.canFork) return row;
+				// 动作 schema 只接受 true 或缺省；不能用 false 使整份投影被前端拒收。
+				const actions = { ...row.actions }; delete actions.canFork;
+				return { ...row, actions };
+			}) : rows,
 			totalCount: rows.length,
 			// firstRowId 是 rowsWindowSchema 必填可空字段（shared/src/zcode-protocol-v4/
 			// snapshot.ts:457 z.number().nullable()）：空窗口必须显式发 null——省略字段会被

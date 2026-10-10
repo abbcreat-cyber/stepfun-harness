@@ -2037,7 +2037,12 @@ app.whenReady().then(async () => {
   void initAutoUpdater({
     openStatusWindow: openUpdateStatusWindow,
     enabled: ZCODE_PRODUCT_FLAVOR === "production",
+    getRunningTaskCount: getRunningAgentSessionCount,
     onBeforeQuitAndInstall: async () => {
+      // 下载期间用户可能启动新任务；进入不可取消的退出屏障前再核对一次 Host 汇总。
+      if (process.env.STEP_BACKEND === "stepcode-local" && getRunningAgentSessionCount() > 0) {
+        throw new Error("HARNESS_TASKS_RUNNING");
+      }
       notifyStabilityLifecycle("update_install");
       await prepareAppQuit("auto-update quitAndInstall", "update-install");
       if (process.platform === "win32") {

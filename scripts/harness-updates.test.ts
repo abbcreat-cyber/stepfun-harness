@@ -27,7 +27,7 @@ class FakeUpdater extends EventEmitter {
 const settle = () => new Promise(resolve => setImmediate(resolve));
 test("own release feed, one operation per channel, cancelled download can retry, install only when ready", async () => {
   const fake = new FakeUpdater(); const installed: string[] = [];
-  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "0.1.0", async target => { installed.push(target); }, () => {});
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "0.1.0", async target => { installed.push(target); }, () => {}, { getRunningTaskCount: () => 0 });
   assert.deepEqual(fake.feed, HARNESS_UPDATE_FEED);
   await assert.rejects(updates.command({ action: "install", target: "desktop" }), /not ready/);
   await updates.command({ action: "check", target: "desktop" }); await updates.command({ action: "check", target: "desktop" });
@@ -38,9 +38,72 @@ test("own release feed, one operation per channel, cancelled download can retry,
   await updates.command({ action: "cancel", target: "desktop" }); await settle();
   assert.equal(updates.snapshot().desktop.state.kind, "update-available"); assert.equal(updates.snapshot().desktop.error, undefined);
   await updates.command({ action: "download", target: "desktop" }); fake.finishDownload(); await settle();
+  assert.deepEqual(installed, ["desktop"], "下载收尾后无需第二次安装命令");
   await updates.command({ action: "check", target: "desktop" }); assert.equal(updates.snapshot().desktop.state.kind, "update-downloaded");
   await updates.command({ action: "install", target: "desktop" }); assert.deepEqual(installed, ["desktop"]);
   assert.deepEqual(Object.keys(updates.snapshot()), ["desktop"]);
+});
+
+test("one confirmation waits for active tasks, resumes without UI and installs exactly once", async () => {
+  const fake = new FakeUpdater(); let tasks = 2, installs = 0;
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.9", async () => { installs++; }, () => {}, { getRunningTaskCount: () => tasks, taskPollMs: 5 });
+  await updates.command({ action: "check" }); fake.finishCheck(); await settle();
+  await updates.command({ action: "download", target: "desktop" });
+  await updates.command({ action: "download", target: "desktop" });
+  assert.equal(fake.downloads, 1);
+  fake.finishDownload(); await settle();
+  assert.equal(updates.snapshot().desktop.installPhase, "waiting-for-tasks");
+  assert.equal(updates.snapshot().desktop.activeTasks, 2); assert.equal(installs, 0);
+  await updates.command({ action: "install", target: "desktop" }); assert.equal(installs, 0);
+  tasks = 0; await new Promise(r => setTimeout(r, 25));
+  assert.equal(installs, 1); assert.equal(updates.snapshot().desktop.installPhase, "installing");
+  fake.finishDownload(); await updates.command({ action: "install", target: "desktop" });
+  assert.equal(installs, 1);
+});
+
+test("cancelling a waiting update revokes automatic restart; cached package requires new consent", async () => {
+  const fake = new FakeUpdater(); let tasks = 1, installs = 0;
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.9", async () => { installs++; }, () => {}, { getRunningTaskCount: () => tasks, taskPollMs: 5 });
+  await updates.command({ action: "check" }); fake.finishCheck(); await settle();
+  await updates.command({ action: "download", target: "desktop" }); fake.finishDownload(); await settle();
+  await updates.command({ action: "cancel", target: "desktop" }); tasks = 0;
+  fake.finishDownload(); await new Promise(r => setTimeout(r, 25));
+  assert.equal(installs, 0); assert.equal(updates.snapshot().desktop.installPhase, undefined);
+  await updates.command({ action: "install", target: "desktop" }); await settle();
+  assert.equal(installs, 1); assert.equal(fake.downloads, 1);
+});
+
+test("download event is insufficient: promise verification failure never installs", async () => {
+  const fake = new FakeUpdater(); let installs = 0;
+  fake.downloadUpdate = async () => { fake.emit("update-downloaded", { version: "0.2.0" }); throw new Error("checksum mismatch"); };
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.9", async () => { installs++; }, () => {}, { getRunningTaskCount: () => 0 });
+  await updates.command({ action: "check" }); fake.finishCheck(); await settle();
+  await updates.command({ action: "download", target: "desktop" }); await settle();
+  assert.equal(installs, 0); assert.equal(updates.snapshot().desktop.state.kind, "update-available");
+  assert.match(updates.snapshot().desktop.error!, /checksum/);
+});
+
+test("unknown task status and installation errors stop automatic retries", async () => {
+  for (const count of [undefined, () => Number.NaN, () => 0]) {
+    const fake = new FakeUpdater(); let installs = 0;
+    const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.9", async () => { installs++; throw new Error("installer failed"); }, () => {}, { getRunningTaskCount: count, taskPollMs: 5 });
+    await updates.command({ action: "check" }); fake.finishCheck(); await settle();
+    await updates.command({ action: "download", target: "desktop" }); fake.finishDownload(); await settle();
+    await new Promise(r => setTimeout(r, 25));
+    assert.equal(installs, count && count() === 0 ? 1 : 0);
+    assert.equal(updates.snapshot().desktop.installPhase, undefined); assert.ok(updates.snapshot().desktop.error);
+    if (installs) { await updates.command({ action: "install", target: "desktop" }); await settle(); assert.equal(installs, 2); }
+  }
+});
+
+test("a task starting at the final quit check returns to waiting without losing consent", async () => {
+  const fake = new FakeUpdater(); let tasks = 0, calls = 0;
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.9", async () => { if (++calls === 1) { tasks = 1; throw new Error("HARNESS_TASKS_RUNNING"); } }, () => {}, { getRunningTaskCount: () => tasks, taskPollMs: 5 });
+  await updates.command({ action: "check" }); fake.finishCheck(); await settle();
+  await updates.command({ action: "download", target: "desktop" }); fake.finishDownload(); await settle();
+  assert.equal(updates.snapshot().desktop.installPhase, "waiting-for-tasks");
+  await new Promise(r => setTimeout(r, 20)); assert.equal(calls, 1);
+  tasks = 0; await new Promise(r => setTimeout(r, 20)); assert.equal(calls, 2);
 });
 
 test("download preparation has no fabricated percentage; sub-one-percent progress remains visible", async () => {
@@ -65,7 +128,7 @@ test("download preparation has no fabricated percentage; sub-one-percent progres
 
 test("idle download deadline cancels the transport and enables explicit retry", async () => {
   const fake = new FakeUpdater();
-  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.2", async () => {}, () => {}, { downloadIdleTimeoutMs: 20 });
+  const updates = new HarnessUpdates(fake as unknown as AppUpdater, "1.0.2", async () => {}, () => {}, { downloadIdleTimeoutMs: 20, getRunningTaskCount: () => 0 });
   await updates.command({ action: "check", target: "desktop" }); fake.finishCheck(); await settle();
   await updates.command({ action: "download", target: "desktop" });
   await new Promise(resolve => setTimeout(resolve, 50));

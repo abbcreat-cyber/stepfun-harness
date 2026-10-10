@@ -120,9 +120,9 @@ test("capability：allowed=false 必带非空 reasonCode（可理解的禁用说
 	}
 });
 
-test("capability：队列与 compact 已接通，fork/pauseGoal/resumeGoal 仍如实禁用", () => {
+test("capability：队列、compact 和 fork 已接通，goal 能力仍如实禁用", () => {
 	const availability = currentAvailability();
-	assert.equal(availability.fork.allowed, false);
+	assert.equal(availability.fork.allowed, true);
 	assert.equal(availability.compact.allowed, true);
 	assert.equal(availability.queueEdit.allowed, true);
 	assert.equal(availability.sendQueuedNow.allowed, true);
@@ -320,7 +320,7 @@ test("capability：v4/connection/flow 背压真实执行（saturated 停投递�
 	}
 });
 
-test("capability：forkAssistant 仍禁用，compact 接受并产生成功标记", async () => {
+test("capability：forkAssistant 接通但拒绝无效锚点，compact 接受并产生成功标记", async () => {
 	const b = launchBridge();
 	try {
 		await createAndSubscribe(b, "cap-fork", 1);
@@ -330,7 +330,7 @@ test("capability：forkAssistant 仍禁用，compact 接受并产生成功标记
 			type: "forkAssistant",
 			payload: { target: { rowId: 1 } },
 		});
-		assert.equal(fork.error?.code, -32602);
+		assert.equal(fork.error?.code, -32000);
 		const compact = await sendCommand(b, 11, {
 			commandId: "cap-compact-1",
 			sessionId: "cap-fork",
@@ -340,7 +340,7 @@ test("capability：forkAssistant 仍禁用，compact 接受并产生成功标记
 		assert.equal(compact.result?.status, "accepted");
 		await b.waitFor(() => lastSnapshot(b, "cap-fork")?.rows.window.some(r => r.kind === "timelineMarker" && r.marker.type === "compact" && r.marker.status === "success"));
 		const snapshot = lastSnapshot(b, "cap-fork");
-		assert.equal(snapshot.availability.fork.allowed, false);
+		assert.equal(snapshot.availability.fork.allowed, true);
 		assert.equal(snapshot.availability.compact.allowed, true);
 	} finally {
 		b.child.kill();

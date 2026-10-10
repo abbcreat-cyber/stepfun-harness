@@ -88,7 +88,7 @@ import { resolveWorkflowRunOpenToolCallId } from "@/v4/workflowRunCardJoin.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
 import { reportAppTelemetryEvent } from "@/lib/appTelemetry.js";
-import { runUserAction, runUserActionAsync } from "@/lib/userActionTelemetry.js";
+import { runUserActionAsync } from "@/lib/userActionTelemetry.js";
 import { logger } from "@/logger.js";
 import type { AssistantPreviewCard } from "@/lib/assistantPreviewCards.js";
 import {
@@ -1341,6 +1341,7 @@ export const ConversationAssistantTextActions = memo(function ConversationAssist
   const { intl, locale } = useZCodeIntl();
   const platform = useOptionalPlatform();
   const [localFeedback, setLocalFeedback] = useState<AssistantMessageFeedback | null>(feedback);
+  const [forking, setForking] = useState(false);
   const copyLabel = intl.formatMessage({ id: "chat.message.copy" });
   const likeLabel = intl.formatMessage({
     id: localFeedback === "like" ? "chat.message.liked" : "chat.message.like",
@@ -1399,15 +1400,16 @@ export const ConversationAssistantTextActions = memo(function ConversationAssist
     [entityId, localFeedback, onFeedbackChange, platform, rowId, sessionId],
   );
   const handleFork = useCallback(() => {
-    if (entityId) {
-      runUserAction({
+    if (entityId && !forking) {
+      setForking(true);
+      void runUserActionAsync({
         input: { featureId: "conversation.history.branch", action: "fork", trigger: "button" },
-        operation: () => onFork?.({ rowId, entityId }),
-        completed: { resultSource: "optimistic_projection" },
+        operation: async () => { await onFork?.({ rowId, entityId }); },
+        completed: { resultSource: "authority_ack" },
         failureStage: "fork",
-      });
+      }).catch(error => logger.warn("[message] fork failed", { error })).finally(() => setForking(false));
     }
-  }, [entityId, onFork, rowId]);
+  }, [entityId, forking, onFork, rowId]);
   return (
     <MessageActions className={cn(className)}>
       <CopyRowAction
@@ -1468,6 +1470,8 @@ export const ConversationAssistantTextActions = memo(function ConversationAssist
       ) : null}
       {onFork && entityId ? (
         <MessageAction
+          disabled={forking}
+          aria-busy={forking}
           aria-label={forkLabel}
           label={forkLabel}
           tooltip={resolveTooltip(forkLabel)}

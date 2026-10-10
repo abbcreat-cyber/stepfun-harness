@@ -27,8 +27,8 @@ export function createSessionLifecycle(ctx) {
 		if (!saved?.session) throw new BridgeError(-32002, "找不到该会话的本地记录");
 		if (ctx.turnBusy) throw new BridgeError(-32000, "当前对话仍在运行");
 		const workspace = await resolveSessionWorkspace(ctx, { workspace: saved.session.workspace });
-		return ctx.runWithPreparedClient({ selection: null, requireIdle: true, refreshAll: true, sessionId, workspace }, async client => {
-		if (saved.session.stepSessionFile) {
+		return ctx.runWithPreparedClient({ selection: null, requireIdle: true, refreshAll: true, sessionId, workspace, startupSessionFile: saved.session.stepSessionFile }, async client => {
+		if (saved.session.stepSessionFile && (await client.getState()).sessionFile !== saved.session.stepSessionFile) {
 			const response = await client.request({ type: "switch_session", sessionPath: saved.session.stepSessionFile });
 			if (!response.success || response.data?.cancelled) throw new BridgeError(-32000, "无法恢复 Step 会话");
 		}

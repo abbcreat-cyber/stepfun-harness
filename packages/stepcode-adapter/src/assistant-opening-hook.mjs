@@ -8,7 +8,7 @@ export const OPENING_TIMING_POLICY = `<desktop_opening_timing>
 </desktop_opening_timing>`;
 
 function requiresOpening(prompt) {
-  return !/只(?:给|要|需).{0,6}(?:结果|答案)|不要.{0,6}(?:过程|说明)|(?:仅|只).{0,5}(?:输出|返回).{0,5}JSON|(?:only|just)\s+(?:the\s+)?(?:answer|result|json)/i.test(
+  return !/只(?:给|要|需).{0,6}(?:结果|答案)|(?:仅|只)(?:需|要)?回答|不要.{0,6}(?:过程|说明)|(?:仅|只).{0,5}(?:输出|返回).{0,5}JSON|(?:only|just)\s+(?:the\s+)?(?:answer|result|json)/i.test(
     prompt ?? "",
   );
 }

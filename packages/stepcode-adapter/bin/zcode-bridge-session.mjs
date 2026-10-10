@@ -235,7 +235,7 @@ const methodHandlers = {
 		// 在途双执行是已记录的已知限制（spec §7.2）。
 		const replayed = ctx.issuedCommandAcks.get(`${typeof envelope.sessionId === "string" ? envelope.sessionId : null}#${commandId}`);
 		if (replayed) return replayed;
-		if (!["editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback"].includes(envelope.type)) ctx.stateRevision += 1;
+		if (!["forkAssistant", "editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback"].includes(envelope.type)) ctx.stateRevision += 1;
 		const revisionAtDecision = ctx.stateRevision;
 		// 幂等 ack 回放表登记：v4/commands/query 查询同一 commandId 时回放 ack.result。
 		const rememberAck = (ack) => {
@@ -249,6 +249,7 @@ const methodHandlers = {
 			return ack;
 		};
 		switch (envelope.type) {
+			case "forkAssistant":
 			case "editUserQuery":
 			case "retryTurn":
 			case "applyFileRewind":
@@ -538,7 +539,7 @@ attachJsonlLineReader(process.stdin, (line) => {
 		if (frame.id !== undefined) {
 			// 准入/队列变更同链串行，避免取消 ACK 后已经选中的队首继续执行。
 			// 交互回答与 Host 回执保持独立，否则等待权限的任务会死锁。
-			const serializedTypes = new Set(["startSavedWorkflow", "editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback", "createSession", "sendText", "compact", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
+			const serializedTypes = new Set(["startSavedWorkflow", "forkAssistant", "editUserQuery", "retryTurn", "applyFileRewind", "setAssistantFeedback", "createSession", "sendText", "compact", "stop", "deleteQueueItem", "editQueueItem", "reorderQueueItem", "sendQueuedNow", "setAutoDrain", "switchModelConfig", "setFollowupMode"]);
 			if ((frame.method === "v4/command" && serializedTypes.has(frame.params?.type)) || ["session/create", "session/send", "session/stop", "session/setModel", "session/setThoughtLevel"].includes(frame.method)) {
 				void ctx.runInputOperation(() => handleRequestLine(frame));
 			} else void handleRequestLine(frame);

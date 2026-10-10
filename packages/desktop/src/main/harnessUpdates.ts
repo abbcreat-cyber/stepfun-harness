@@ -13,10 +13,12 @@ export class HarnessUpdates {
   private downloadTimedOut = false;
   private lastProgressBytes = -1;
   private availableDesktop: UpdateInfo | undefined;
+  private autoInstallRequested = false;
+  private installTimer: ReturnType<typeof setTimeout> | undefined;
   constructor(private readonly desktop: AppUpdater, version: string,
     private readonly install: (target: HarnessUpdateTarget) => Promise<void>,
     private readonly publish: (state: UpdateStatePayload) => void,
-    private readonly options: { downloadIdleTimeoutMs?: number; prepareDesktop?: (info: UpdateInfo) => Promise<void>; usePreparedDesktop?: () => () => void } = {},
+    private readonly options: { downloadIdleTimeoutMs?: number; prepareDesktop?: (info: UpdateInfo) => Promise<void>; usePreparedDesktop?: () => () => void; getRunningTaskCount?: () => number; taskPollMs?: number } = {},
   ) {
     this.state = {
       desktop: { currentVersion: version, state: { kind: "idle", enabled: true }, checked: false },
@@ -39,10 +41,51 @@ export class HarnessUpdates {
     });
     desktop.on("update-downloaded", info => {
       if (!this.cancellation || this.cancellation.cancelled) return;
+      clearTimeout(this.downloadIdleTimer);
       this.set("desktop", { kind: "update-downloaded", enabled: true, version: info.version, releaseNotes: notes(info) });
     });
     // EventEmitter error must have a listener; the command's promise records the failure.
-    desktop.on("error", error => { this.state.desktop.error = error.message; });
+    desktop.on("error", error => {
+      this.state.desktop.error = error.message;
+      if (this.installing) { this.installing = false; this.clearInstallIntent(); }
+    });
+  }
+  private clearInstallIntent() {
+    this.autoInstallRequested = false;
+    clearTimeout(this.installTimer);
+    this.installTimer = undefined;
+    delete this.state.desktop.installPhase;
+    delete this.state.desktop.activeTasks;
+  }
+  private async advanceInstall() {
+    if (!this.autoInstallRequested || this.installing || this.state.desktop.state.kind !== "update-downloaded") return;
+    clearTimeout(this.installTimer);
+    try {
+      const count = this.options.getRunningTaskCount?.() ?? Number.NaN;
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error("HARNESS_TASK_STATUS_UNAVAILABLE");
+      if (count > 0) {
+        this.state.desktop.installPhase = "waiting-for-tasks";
+        this.state.desktop.activeTasks = count;
+        this.installTimer = setTimeout(() => { void this.advanceInstall(); }, this.options.taskPollMs ?? 1000);
+        this.installTimer.unref?.();
+        return;
+      }
+      this.installing = true;
+      this.state.desktop.installPhase = "installing";
+      delete this.state.desktop.activeTasks;
+      // 下载成功后只由 Main 推进安装，面板关闭或多窗口重复点击都不会产生第二次安装。
+      await this.install("desktop");
+    } catch (error) {
+      this.installing = false;
+      if (error instanceof Error && error.message === "HARNESS_TASKS_RUNNING") {
+        this.state.desktop.installPhase = "waiting-for-tasks";
+        this.installTimer = setTimeout(() => { void this.advanceInstall(); }, this.options.taskPollMs ?? 1000);
+        this.installTimer.unref?.();
+        return;
+      }
+      this.clearInstallIntent();
+      this.state.desktop.error = error instanceof Error ? error.message : String(error);
+    }
   }
   snapshot(): HarnessUpdateSnapshot { return structuredClone(this.state); }
   async prepareToShow() {
@@ -70,6 +113,7 @@ export class HarnessUpdates {
     const item = this.state[target], prior = item.state;
     if (action === "check" && ["download-progress", "update-downloaded"].includes(prior.kind)) return;
     if (action === "download" && prior.kind !== "update-available") throw new Error("No verified update is available");
+    if (action === "download") { this.clearInstallIntent(); this.autoInstallRequested = true; }
     delete item.error;
     this.set(target, action === "check" ? { kind: "checking", enabled: false } : { ...prior, kind: "download-progress", enabled: true, progress: "", downloadPhase: "preparing" });
     const operation = (async () => {
@@ -92,11 +136,14 @@ export class HarnessUpdates {
         }
         if (action === "check") item.checked = true;
       } catch (error) {
+        if (action === "download") this.clearInstallIntent();
         const cancelled = target === "desktop" && this.cancellation?.cancelled;
         item.error = target === "desktop" && action === "download" && this.downloadTimedOut
           ? "HARNESS_DOWNLOAD_STALLED" : cancelled ? undefined : error instanceof Error ? error.message : String(error);
         this.set(target, action === "download" ? prior : { kind: "idle", enabled: true });
       } finally { this.pending.delete(target); if (target === "desktop") { clearTimeout(this.downloadIdleTimer); this.cancellation = null; } }
+      // downloaded 事件可能早于 downloadUpdate promise 收尾；校验/传输最终失败绝不能启动安装。
+      if (action === "download") void this.advanceInstall();
     })();
     this.pending.set(target, operation);
   }
@@ -110,6 +157,8 @@ export class HarnessUpdates {
     if (target !== "desktop") throw new Error("Invalid update target");
     if (action === "check" || action === "download") this.run(target, action);
     if (action === "cancel") {
+      if (this.installing) throw new Error("Installation is already in progress");
+      this.clearInstallIntent();
       if (target === "desktop" && this.cancellation) {
         clearTimeout(this.downloadIdleTimer);
         const state = this.state.desktop.state;
@@ -118,11 +167,11 @@ export class HarnessUpdates {
       }
     }
     if (action === "install") {
-      if (this.installing) throw new Error("Installation is already in progress");
+      if (this.installing || this.autoInstallRequested) return this.snapshot();
       if (this.state[target].state.kind !== "update-downloaded") throw new Error("Update is not ready to install");
-      this.installing = true;
-      try { await this.install(target); }
-      finally { this.installing = false; }
+      delete this.state.desktop.error;
+      this.autoInstallRequested = true;
+      void this.advanceInstall();
     }
     return this.snapshot();
   }

@@ -17,7 +17,7 @@ import {
 } from "react";
 import { Hand } from "lucide-react";
 import { ConversationDraftSendPreview } from "./ConversationDraftSendPreview.js";
-import { visibleDraftSendPreview, type DraftSendPreview } from "./composer/draftSendPreview.js";
+import { visibleDraftSendPreview, shouldPreviewPendingSend, type DraftSendPreview } from "./composer/draftSendPreview.js";
 import {
   BUILTIN_MODEL_PROVIDER_IDS,
   buildCustomSupplierKey,
@@ -1439,6 +1439,10 @@ export function SessionPane({
         ...(baseLogEpoch ? { baseLogEpoch } : {}),
       });
       onEnvelopeCreated?.(envelope);
+      // 发送中预览在上行前绑定 commandId；权威行先于 ACK 到达时也能直接接替。
+      if (type === "sendText" && draftSendPreviewRef.current?.sessionId === targetSessionId) {
+        updateDraftSendPreview({ ...draftSendPreviewRef.current, commandId: envelope.commandId });
+      }
       const previewToken = submission ? draftSendPreviewRef.current?.token : undefined;
       // 必须早于第一次上行：transport error/renderer refresh 后仍有可查询线索。
       const groupedDraftTask =
@@ -3018,11 +3022,11 @@ export function SessionPane({
       options?: ConversationComposerSendOptions,
     ): Promise<ConversationComposerSendResult> => {
       // 冷启动只影响实际执行，不阻塞首发的会话布局；失败仍交给原 Composer 恢复草稿。
-      const previewToken = sessionId === null && !text.trimStart().startsWith("/")
+      const previewToken = shouldPreviewPendingSend(text, sessionId === null, snapshotRef.current?.inputRouting.mode, options?.requestedDelivery)
         ? ++draftSendPreviewToken.current : null;
       if (previewToken !== null) updateDraftSendPreview({ token: previewToken, workspaceKey,
         generation: draftRuntimeInvalidationVersion, text, attachmentCount: options?.attachments?.length ?? 0,
-        sessionId: null, commandId: null });
+        sessionId, commandId: null });
       const clearPreview = () => {
         if (draftSendPreviewRef.current?.token === previewToken) updateDraftSendPreview(null);
       };
@@ -3034,6 +3038,7 @@ export function SessionPane({
         heldQueueDisposition: options?.heldQueueDisposition,
       });
       try {
+        if (previewToken !== null) requestAnimationFrame(focusTimelineToLatest);
         const sendResult = await dispatchSendText(text, options);
         if (sendResult === "blocked" || sendResult === "confirmationRequired") {
           clearPreview();
@@ -3084,12 +3089,14 @@ export function SessionPane({
     [clearQueueEditOperation],
   );
 
+  const forkInFlight = useRef<Promise<void> | null>(null);
   const handleFork = useCallback(
     (target: ConversationRowTarget) => {
+      if (forkInFlight.current) return forkInFlight.current;
       const current = snapshotRef.current;
       if (!sessionId || current === null) return;
       // forkAssistant 是 CAS 命令：baseRevision 取当前投影 revision。
-      void dispatchCommand(
+      const operation = dispatchCommand(
         "forkAssistant",
         { target },
         sessionId,
@@ -3097,16 +3104,21 @@ export function SessionPane({
         current.logEpoch,
       ).then((ack) => {
         if (ack.status !== "accepted" && ack.status !== "duplicate") {
-          logger.warn(`[v4-pane] fork 被拒绝: ${ack.status} ${ack.reasonCode ?? ""}`);
-          return;
+          throw new Error(ack.reasonCode ?? ack.status);
         }
         if (ack.result?.type === "forkAssistant") {
           // 原地切到 child session（与新建会话同一选择路径）。
           onSessionCreated?.(ack.result.sessionId);
         }
-      });
+      }).catch((error: unknown) => {
+        logger.warn("[v4-pane] fork 失败", { error });
+        toast(intl.formatMessage({ id: "chat.message.fork.failed" }, { error: error instanceof Error ? error.message : String(error) }));
+        throw error;
+      }).finally(() => { forkInFlight.current = null; });
+      forkInFlight.current = operation;
+      return operation;
     },
-    [dispatchCommand, onSessionCreated, sessionId],
+    [dispatchCommand, intl, onSessionCreated, sessionId],
   );
 
   const handleEdit = useCallback(
@@ -4855,7 +4867,7 @@ export function SessionPane({
               headerSlot={
                 // unsupportedRowCount 也要开这个门：整份副本的行都被本 build 跳过时
                 // rows 为空，但只读块必须留下来显示「需要更新 ZCode」，不能整块消失。
-                pendingDraftPreview ? <ConversationDraftSendPreview preview={pendingDraftPreview} workspacePath={workspacePath} workspaceIdentity={workspaceIdentity} /> : importedShare &&
+                isDraft && pendingDraftPreview ? <ConversationDraftSendPreview preview={pendingDraftPreview} workspacePath={workspacePath} workspaceIdentity={workspaceIdentity} /> : importedShare &&
                 (importedShare.rows.length > 0 || importedShare.unsupportedRowCount > 0) ? (
                   <ConversationShareImportNotice
                     rows={importedShare.rows}
@@ -4881,6 +4893,7 @@ export function SessionPane({
                   </div>
                 ) : null
               }
+              pendingInputSlot={!isDraft && pendingDraftPreview ? <ConversationDraftSendPreview preview={pendingDraftPreview} workspacePath={workspacePath} workspaceIdentity={workspaceIdentity} /> : null}
               centerEmptyStateWithDock={showDraftWelcome}
               summaryPanelLayout={statusPanelLayout}
               conversationFindQuery={!isDraft && focused ? conversationFindQuery : ""}

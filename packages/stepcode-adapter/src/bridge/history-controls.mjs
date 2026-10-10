@@ -1,6 +1,7 @@
 import { BridgeError } from "./errors.mjs";
 import { expandWorkflowCommand } from "../workflow/catalog.mjs";
 import { checkpointsFor, checkpointPreview, applyCheckpoints, checkpointChanges } from "../file-checkpoints.mjs";
+import { syncForkActions, forkAssistant } from "./assistant-fork.mjs";
 
 export function activeEntries(data) {
   const byId = new Map(data.entries.map(e => [e.id, e])), branch = [], visited = new Set();
@@ -41,7 +42,7 @@ export function createHistoryControls(ctx) {
     if (header) {
       header.entityId = user.id;
       const files = checkpointsFor(branch, user.id).filter(f => !f.calls[0].ignored && f.calls[0].before?.hash !== f.calls.at(-1).after);
-      if (files.length && header.fileChanges?.state !== "reverted") {
+      if (files.length && header.fileChanges?.state !== "reverted" && !(row.rowId <= ctx.primarySession.inheritedRowMax)) {
         const changes = checkpointChanges(files);
         header.fileChanges = { files: changes.files, additions: changes.additions, deletions: changes.deletions, state: "active" };
         header.actions = { ...header.actions, canRewindFiles: true };
@@ -52,13 +53,16 @@ export function createHistoryControls(ctx) {
       assistant.entityId = `${user.id}:assistant:${assistant.rowId}`;
       assistant.actions = { ...assistant.actions, canRetry: true };
     }
+    await syncForkActions(ctx, branch);
     ctx.persistConversation(); ctx.broadcastConversationSnapshot();
   }
   async function hydrateHistoryControls(sessionId) {
     const saved = ctx.readConversation(sessionId);
-    if (!saved?.session?.stepSessionFile || saved.session.readOnly || saved.rows.findLast(r => r.kind === "userInput" && r.origin === "realUser")?.entityId) return;
+    if (!saved?.session?.stepSessionFile || saved.session.readOnly) return;
     if (ctx.turnBusy || (ctx.primarySession && ctx.primarySession.sessionId !== sessionId)) return;
     await ctx.restoreSession(sessionId);
+    // 打开正在展示的旧会话时准备底座；投影已迁移则不重复扫描整段原生历史。
+    if (saved.session.historyActionsVersion === 2) return;
     await syncHistoryControls();
   }
   function guard(params, revision = ctx.stateRevision) {
@@ -73,6 +77,7 @@ export function createHistoryControls(ctx) {
   }
   async function fileRecords(params, revision) {
     const row = guard(params, revision);
+    if (row.rowId <= ctx.primarySession.inheritedRowMax) throw new BridgeError(-32000, "分叉继承的历史不能撤销原会话的文件修改");
     const user = ctx.conversationRows.find(r => r.kind === "userInput" && r.turnId === row.turnId && r.entityId);
     if (!user) throw new BridgeError(-32000, "该轮没有可恢复的文件检查点");
     return checkpointsFor(await entries(ctx.client), user.entityId);
@@ -92,6 +97,7 @@ export function createHistoryControls(ctx) {
   async function historyCommand(envelope, revision) {
     await ctx.restoreSession(envelope.sessionId);
     const row = guard(envelope, revision), type = envelope.type;
+    if (type === "forkAssistant") return forkAssistant(ctx, row, envelope, await entries(ctx.client));
     if (type === "setAssistantFeedback") {
       if (row.kind !== "assistantText") throw new Error("只能评价回复");
       const value = envelope.payload.feedback;
@@ -125,6 +131,7 @@ export function createHistoryControls(ctx) {
       const branch = await entries(client);
       if (branch.findLast(e => e.type === "message" && e.message?.role === "user")?.id !== user.entityId) throw new Error("原生历史已变化，请重新加载");
       if (envelope.payload.workspaceMode === "rewind") {
+        if (user.rowId <= ctx.primarySession.inheritedRowMax) throw new BridgeError(-32000, "分叉继承的历史不能撤销原会话的文件修改");
         restored = await applyCheckpoints(checkpointsFor(branch, user.entityId));
         if (!restored.applied) return;
       }

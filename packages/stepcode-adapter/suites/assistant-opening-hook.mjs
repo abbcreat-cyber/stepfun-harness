@@ -25,7 +25,7 @@ test("开场时机约束随开关和只要结果豁免，不重复注入",()=>{
  assert.match(prompt,/不要先在思考中完成/);assert.match(prompt,/不为满足开场而增加无关工具/);
  assert.equal(withOpeningTimingPolicy(prompt,"完成报告"),prompt);
  assert.equal(withOpeningTimingPolicy(prompt,"完成报告",false),"BASE");
- for(const q of ["只给结果","不要过程说明","只输出JSON","only the answer"])assert.equal(withOpeningTimingPolicy("BASE",q),"BASE");
+ for(const q of ["只给结果","只回答数字","仅需回答成功或失败","不要过程说明","只输出JSON","only the answer"])assert.equal(withOpeningTimingPolicy("BASE",q),"BASE");
 });
 
 test("纯套话不满足开场准入，具体目标和下一步正常放行", () => {

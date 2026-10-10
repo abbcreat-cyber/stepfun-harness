@@ -16,6 +16,7 @@ import { getLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
  * - 草稿 per-session 持久化（composerDraftStore）+ prompt history（promptHistoryStorage）；
  * - 工具条（模型/思考深度/模式/context usage）见 V4ComposerToolbar。
  */
+import { shouldPreviewPendingSend } from "./composer/draftSendPreview.js";
 import {
   memo,
   useCallback,
@@ -613,9 +614,13 @@ function ConversationComposerImpl({
   const sendShortcut = resolveChatEnterShortcut({ enterSubmits });
   const updateText = useCallback(
     (next: string) => {
+      // clear() 的 Lexical 回调会再次报告同一空文本；不能把这次回声当作用户新输入，
+      // 否则失败恢复会误判 revision 已变，丢掉刚提交的草稿。
+      if (textRef.current !== next) {
+        contentRevisionRef.current += 1;
+        advanceComposerDraftRevision(workspacePath, workspaceIdentity);
+      }
       textRef.current = next;
-      contentRevisionRef.current += 1;
-      advanceComposerDraftRevision(workspacePath, workspaceIdentity);
       setText(next);
       onTextChange?.(next);
     },
@@ -1337,7 +1342,7 @@ function ConversationComposerImpl({
           }
         }
         claimSubmittedDraft();
-        if (requestedDelivery === "startNow" || (draftMode && !trimmed.startsWith("/"))) {
+        if (requestedDelivery === "startNow" || shouldPreviewPendingSend(trimmed, draftMode, snapshotRef.current?.inputRouting.mode, requestedDelivery)) {
           // 原子抢占与普通首发都要等待实际准入；首发已有明确 pending 消息预览，
           // 编辑器无需继续占着同一份正文。失败仍用冻结 editor state 原样恢复。
           // 先清空可见正文；命令拒绝时用冻结 editor state 原样恢复。

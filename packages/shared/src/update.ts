@@ -7,6 +7,8 @@ export type HarnessUpdateItem = {
   state: UpdateStatePayload;
   checked: boolean;
   error?: string;
+  installPhase?: "waiting-for-tasks" | "installing";
+  activeTasks?: number;
 };
 export type HarnessUpdateSnapshot = Record<HarnessUpdateTarget, HarnessUpdateItem>;
 
