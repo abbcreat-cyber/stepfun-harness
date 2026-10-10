@@ -5,9 +5,15 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join, resolve } from "node:path";
 import { includeRuntimePath } from "./runtime-copy-policy.mjs";
-import { parseOfficeArgs } from "../tools/office/office.mjs";
+import { parseOfficeArgs, runOffice } from "../tools/office/office.mjs";
 
 const exec = promisify(execFile);
+test("Office help exposes supported input pairs instead of suggesting full LibreOffice compatibility", async () => {
+  const lines = [];
+  await runOffice(["--help"], undefined, line => lines.push(line));
+  assert.match(lines.join("\n"), /doc\/docx\/odt/);
+  assert.match(lines.join("\n"), /ReportLab/);
+});
 test("copy policy keeps runtime compiler data and license sources, omits development files", () => {
   const root = resolve("example-package");
   for (const file of ["lib/api.mjs", "src/node.ts", "typescript/lib/lib.es2025.d.ts", "licenses/LICENSE", "sources/tests/original.c", "data/cp936.json"]) assert.ok(includeRuntimePath(root, join(root, file)), file);

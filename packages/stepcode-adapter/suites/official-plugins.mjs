@@ -9,6 +9,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { createStepPluginHandlers } from "../src/plugins.mjs";
 import { isUnavailableOfficialPlugin } from "../src/official-plugins.mjs";
+import { refreshBundledOfficeNotice, LEGACY_OFFICE_NOTICE } from "../src/bundled-office-notice.mjs";
 import {
   OFFICIAL_PLUGIN_NAMES,
   officialPluginSource,
@@ -23,6 +24,21 @@ try {
   available = false;
 }
 const temporary = () => mkdtemp(join(process.env.STEP_TEST_ROOT || tmpdir(), "official-plugins-"));
+
+test("Office guidance upgrade preserves custom skill text and skips nonofficial or edited notices", async () => {
+  const root = await temporary(), target = join(root, "disabled-plugins/pdf"), path = join(target, "skills/pdf/SKILL.md");
+  await mkdir(join(target, "skills/pdf"), { recursive: true });
+  const before = `---\nname: user-kept-name\n---\n${LEGACY_OFFICE_NOTICE}\n# CUSTOM BODY\nKeep my preferences.`;
+  await writeFile(path, before);
+  assert.equal(await refreshBundledOfficeNotice(target, source, "pdf", { stepOfficial: false }), false);
+  assert.equal(await readFile(path, "utf8"), before);
+  assert.equal(await refreshBundledOfficeNotice(target, source, "pdf", { stepOfficial: true }), true);
+  const after = await readFile(path, "utf8");
+  assert.match(after, /reportlab/); assert.match(after, /CUSTOM BODY/); assert.match(after, /user-kept-name/);
+  assert.equal(await refreshBundledOfficeNotice(target, source, "pdf", { stepOfficial: true }), false);
+  await writeFile(path, before.replace("Probe `soffice --version`", "My custom instruction"));
+  assert.equal(await refreshBundledOfficeNotice(target, source, "pdf", { stepOfficial: true }), false);
+});
 test(
   "available original plugins retain complete skills/commands and working enable/configure facts",
   { skip: !available, timeout: 30000 },

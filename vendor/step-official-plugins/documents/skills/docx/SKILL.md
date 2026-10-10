@@ -9,7 +9,15 @@ license: Proprietary. LICENSE.txt has complete terms
 
 ## StepFun Harness bundled Office runtime
 
-In the Windows desktop app, document tools are bundled. Probe `soffice --version` before installing anything. The provided `soffice` / `libreoffice` commands support ordinary headless conversions through a compact native LibreOffice engine. `HARNESS_OFFICE_CLI` points to its Node CLI, which also provides `recalculate INPUT [OUTPUT]` and `render INPUT NEW_DIRECTORY`. The spreadsheet helper automatically uses it for formula recalculation. Keep using the document quality checks below. If a bundled command fails, report its actual error; do not replace or reinstall the runtime silently.
+<!-- harness-office-capabilities:v2 -->
+The Windows app bundles Python document libraries and a compact Office engine. Choose the pipeline for the input you actually have:
+
+- **New PDF from text/data:** use bundled Python `reportlab` directly, then `pypdf`/PyMuPDF to check pages and text. For Chinese, use an available CJK font or the PDF report brief font helper. Do not create HTML or FODT as an intermediate for Office conversion.
+- **Existing Office files:** `soffice --headless --convert-to pdf --outdir DIR FILE` supports DOC/DOCX/ODT, XLS/XLSX/ODS, and PPT/PPTX/ODP inputs. The wrapper additionally imports CSV. HTML, FODT, RTF and TXT are not Office inputs in this build; a working `soffice --version` does not imply full LibreOffice compatibility.
+- **Capabilities and formulas:** `soffice --help` or `soffice --capabilities` lists actual format pairs. `HARNESS_OFFICE_CLI` also provides `recalculate INPUT [OUTPUT]` and `render INPUT NEW_DIRECTORY`; the spreadsheet recalc helper uses it.
+
+Keep the quality checks below. On an unsupported conversion, select a supported pipeline instead of trying more guessed formats or reading engine internals. Do not install or replace bundled tools without a concrete missing dependency.
+<!-- /harness-office-capabilities -->
 
 
 # DOCX Creation, Editing, and Analysis

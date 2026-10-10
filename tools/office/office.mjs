@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { createConverter, discoverRuntime } from "@deepseek-ai/libreoffice-kit";
+import { createConverter, discoverRuntime, CONVERSION_FORMATS } from "@deepseek-ai/libreoffice-kit";
 
 const optionsWithValue = new Set(["--outdir", "--convert-to", "--timeout-ms", "--dpi", "--sheet", "--range"]);
 const ignored = new Set(["--headless", "--invisible", "--nologo", "--nodefault", "--norestore", "--nolockcheck"]);
@@ -13,6 +13,7 @@ export function parseOfficeArgs(args) {
   for (let i = 0; i < args.length; i++) {
     const value = args[i];
     if (value === "--version") return { mode: "version" };
+    if (value === "--capabilities") return { mode: "capabilities" };
     if (value === "--help" || value === "-h") return { mode: "help" };
     if (value === "--terminate_after_init") { initialized = true; continue; }
     if (ignored.has(value) || /^--?env:UserInstallation=/.test(value)) continue;
@@ -42,8 +43,10 @@ export function parseOfficeArgs(args) {
 
 export async function runOffice(argv, signal, report = console.log) {
   const args = parseOfficeArgs([...argv]);
+  const conversions = [...CONVERSION_FORMATS, { inputs: ["csv"], outputs: ["pdf", "xlsx", "ods", "csv"] }];
+  if (args.mode === "capabilities") { report(JSON.stringify({ conversions, pdfCreation: "Use bundled Python reportlab for new PDFs", unsupportedInputs: ["html", "htm", "fodt", "rtf", "txt"] })); return; }
   if (args.mode === "version") { report(`LibreOffice kit ${discoverRuntime().version} (StepFun Harness)`); return; }
-  if (args.mode === "help") { report("soffice --headless --convert-to pdf --outdir DIR FILE...\noffice.mjs convert INPUT OUTPUT\noffice.mjs recalculate INPUT [OUTPUT]\noffice.mjs render INPUT NEW_DIRECTORY [--dpi 144]"); return; }
+  if (args.mode === "help") { report("soffice --headless --convert-to pdf --outdir DIR FILE...\noffice.mjs convert INPUT OUTPUT\noffice.mjs recalculate INPUT [OUTPUT]\noffice.mjs render INPUT NEW_DIRECTORY [--dpi 144]\noffice.mjs --capabilities\nSupported input -> output formats:\n" + conversions.map(group => `${group.inputs.join("/")} -> ${group.outputs.join("/")}`).join("\n") + "\nNew PDFs: use bundled Python ReportLab. HTML/FODT/RTF/TXT are not supported Office inputs."); return; }
   const converter = await createConverter({ timeoutMs: args.timeout });
   try {
     if (args.mode === "render") {

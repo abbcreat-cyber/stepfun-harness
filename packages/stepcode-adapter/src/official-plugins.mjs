@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, writeFile, access, rename } from "node:fs
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { retireMissingBundledPlugins } from "./builtin-plugin-availability.mjs";
+import { refreshBundledOfficeNotice } from "./bundled-office-notice.mjs";
 export {pluginConfigSignature,readPluginConfigSnapshot,resolveStartedPluginSignature} from './plugin-config-signature.mjs';
 import {
   withStepPluginState,
@@ -123,7 +124,9 @@ async function materialize(root, source) {
     ) {
       await rename(join(active, "step.plugin.json"), join(active, STEP_PLUGIN_DISABLED_MANIFEST));
     }
-    if (current || (await readStepPluginDeclaration(disabled))) continue;
+    if (current) { await refreshBundledOfficeNotice(active, source, entry.name, current.manifest); continue; }
+    const inactive = await readStepPluginDeclaration(disabled);
+    if (inactive) { await refreshBundledOfficeNotice(disabled, source, entry.name, inactive.manifest); continue; }
     const original = join(source, entry.name),
       manifest = JSON.parse(await readFile(join(original, ".zcode-plugin/plugin.json"), "utf8"));
     const enabled = entry.defaultEnabled && !isUnavailableOfficialPlugin(entry.name);
