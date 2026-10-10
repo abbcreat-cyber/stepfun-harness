@@ -726,6 +726,23 @@ export function createZCodeTaskIndexSyncer(
         }
       }
     }
+    // 旧适配器返回空 messages，已有任务也可能没有正文；只回填缺失字段，
+    // 不用完整快照覆盖产品壳状态，不制造历史终态通知，不恢复/启动模型任务。
+    for (let offset = 0; offset < candidates.length; offset += 4) {
+      if (!isLiveState(state)) return;
+      await Promise.all(candidates.slice(offset, offset + 4).map(async (summary) => {
+        const target = sessionTargetFrom(state.target, summary.sessionId);
+        const record = { ...target, taskId: summary.sessionId };
+        try {
+          const revision = await taskIndexRepo.getSearchBackfillRevision(record);
+          if (revision === null) return;
+          const snapshot = await agentService.readSession({ ...target, runtimePolicy: "existing-only" });
+          if (!isLiveState(state)) return;
+          await taskIndexRepo.backfillSearchText({ ...record, expectedUpdatedAt: revision,
+            searchableText: buildSearchableTextFromSnapshot(snapshot) });
+        } catch (error) { failedCount += 1; firstError ??= error; }
+      }));
+    }
     if (failedCount > 0) {
       logger.warn(
         undefined,

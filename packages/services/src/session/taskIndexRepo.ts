@@ -1485,6 +1485,28 @@ export class TaskIndexRepo {
     });
   }
 
+  /** 空正文历史索引的只读迁移标记；deleted 不参与回填。 */
+  async getSearchBackfillRevision(params: { workspacePath: string; workspaceIdentity?: string; taskId: string }): Promise<number | null> {
+    await this.ensureReady();
+    const row = this.getTaskRow(params);
+    return row && row.deleted !== 1 && !row.searchable_text ? row.updated_at : null;
+  }
+
+  async backfillSearchText(params: { workspacePath: string; workspaceIdentity?: string; taskId: string; expectedUpdatedAt: number; searchableText: string }): Promise<void> {
+    await this.ensureReady();
+    await this.enqueueWrite(params, () => {
+      const row = this.getTaskRow(params);
+      // 回源期间用户可能改写/重试；过期读取不能覆盖新分支或最新完整索引。
+      if (!row || row.deleted === 1 || row.searchable_text || row.updated_at !== params.expectedUpdatedAt) return;
+      this.getDatabase().prepare(`UPDATE tasks SET searchable_text = ?
+        WHERE workspace_key = ? AND task_id = ? AND updated_at = ?
+        AND deleted = 0 AND searchable_text = ''`).run(
+        params.searchableText.slice(0, TASK_SEARCH_TEXT_MAX_CHARS),
+        workspaceKey(params), params.taskId, params.expectedUpdatedAt,
+      );
+    });
+  }
+
   async clearTaskUnreadIfMatches(params: {
     workspacePath: string;
     workspaceIdentity?: string;

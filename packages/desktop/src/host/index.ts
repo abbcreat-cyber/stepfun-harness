@@ -133,6 +133,7 @@ import {
   recordCronRunOutcomeBestEffort,
   startManualClaimHeartbeat,
   settleCronRunTerminalOutcome,
+  settleCronRunOnShutdown,
   settleManualDispatchFailureBestEffort,
 } from "./cronRunLifecycle.js";
 import {
@@ -347,7 +348,7 @@ const logger = {
 };
 
 const cronAutomationRepo = new AutomationRepo();
-const cronRunSubscriptions = new Map<string, { dispose(): void }>();
+const cronRunSubscriptions = new Map<string, { dispose(): void; settleOnShutdown(servicesClosed: boolean): Promise<void> }>();
 
 // ---- 闲时任务（off-peak）派发：与 cron 并行的独立链路（表/消息/常量互不复用）----
 const offPeakTaskRepo = new OffPeakTaskRepo();
@@ -837,6 +838,10 @@ function trackCronRunOutcome(params: {
         })
       : null;
   cronRunSubscriptions.set(key, {
+    settleOnShutdown: (servicesClosed) => settleCronRunOnShutdown({
+      ...params, servicesClosed, local: !isRemoteWorkspaceIdentity(params.workspaceIdentity ?? ""),
+      repo: cronAutomationRepo, logWarn: (message, error) => logger.warn(message, error),
+    }),
     dispose() {
       claimHeartbeat?.dispose();
       disposable.dispose();
@@ -2146,10 +2151,10 @@ async function disposeHostResources(reason: string): Promise<HostShutdownResult>
     disposeLocalResourceTelemetry();
     disposeAttachedServicePorts();
     windowHostControllerRuntime.dispose();
+    const interruptedCronRuns = [...cronRunSubscriptions.values()];
     for (const key of Array.from(cronRunSubscriptions.keys())) {
       disposeCronRunSubscription(key);
     }
-    cronAutomationRepo.close();
     for (const key of Array.from(offPeakRunSubscriptions.keys())) {
       disposeOffPeakRunSubscription(key);
     }
@@ -2186,6 +2191,13 @@ async function disposeHostResources(reason: string): Promise<HostShutdownResult>
         log: (message, details) => logger.warn(message, details),
       },
     );
+    // 原实现只移除订阅并关库，留下 running claim，重开后十分钟内被误判重复运行。
+    // 运行时停止后才释放持有的本地 claim，关闭失败仍交给原有 stale 回收机制。
+    const servicesClosed = Boolean(servicesToDispose) &&
+      !shutdownResult.failedPhases.includes("service-dispose") &&
+      !shutdownResult.timedOutPhases.includes("service-dispose");
+    await Promise.all(interruptedCronRuns.map(run => run.settleOnShutdown(servicesClosed)));
+    cronAutomationRepo.close();
     if (shutdownResult.exitCode !== 0) {
       logger.warn("host resource cleanup completed with errors", {
         failedPhases: shutdownResult.failedPhases,

@@ -125,3 +125,16 @@ export async function settleCronRunTerminalOutcome(
   if (params.trigger !== "manual") return;
   await releaseManualClaimBestEffort(params);
 }
+
+/** 正常退出且本地运行时确已关闭后，结算本 Host 持有的 run；不清扫其他窗口/远端任务。 */
+export async function settleCronRunOnShutdown(
+  params: CronRunLifecycleIdentity & {
+    repo: CronRunLifecycleRepo;
+    local: boolean;
+    servicesClosed: boolean;
+    logWarn: LogWarn;
+  },
+): Promise<void> {
+  if (!params.local || !params.servicesClosed) return;
+  await settleCronRunTerminalOutcome({ ...params, outcome: "stopped" });
+}

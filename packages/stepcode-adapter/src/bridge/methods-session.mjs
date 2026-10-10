@@ -22,6 +22,7 @@ import {
 } from "../wire-shapes.mjs";
 import { log } from "./logging.mjs";
 import { BridgeError } from "./errors.mjs";
+import { legacyVisibleMessages } from "../legacy-visible-messages.mjs";
 import { testProviderConnectivity } from "./provider-connectivity.mjs";
 import { resolveSessionWorkspace } from "./model-admission.mjs";
 import { initializeCreatedSession } from "../initial-session.mjs";
@@ -29,6 +30,13 @@ import { initializeCreatedSession } from "../initial-session.mjs";
 /** @param {any} ctx 共享桥接状态（ledger/primarySession/client/issuedCommandAcks 等） */
 export function createSessionMethods(ctx) {
 	const pluginHandlers = createStepPluginHandlers();
+	function visibleSnapshot(session, rows = ctx.conversationRows) {
+		const snapshot = makeSessionStateSnapshot({ ...session,
+			thoughtLevels: { available: session.thoughtLevels ?? [], current: session.thoughtLevel } });
+		snapshot.messages = legacyVisibleMessages(session, rows);
+		if (Number.isFinite(session.createdAt)) snapshot.session.createdAt = session.createdAt;
+		return snapshot;
+	}
 	async function pluginReferenceCatalog(params) {
 		if (!params.sessionId) return pluginHandlers["plugins/referenceCatalog"]();
 		const session = ctx.primarySession?.sessionId === params.sessionId ? ctx.primarySession : ctx.readConversation(params.sessionId)?.session;
@@ -193,12 +201,8 @@ export function createSessionMethods(ctx) {
 			if (params.toolDenylist !== undefined) session.toolDenylist = [...params.toolDenylist];
 			if (params.toolAllowlist !== undefined) session.toolAllowlist = [...params.toolAllowlist];
 			ctx.persistConversation();
-			const snapshot = makeSessionStateSnapshot({ ...session, thoughtLevels: {
-				available: session.thoughtLevels ?? [], current: session.thoughtLevel,
-			} });
-			// 快照工厂默认新建时间；resume 必须保留历史创建时间，避免 task index 在恢复时变成新任务。
-			if (Number.isFinite(session.createdAt)) snapshot.session.createdAt = session.createdAt;
-			return snapshot;
+			// 恢复和配置变更都保留正文及创建时间，不能再次清空历史索引。
+			return visibleSnapshot(session);
 		},
 		"session/subscribe": (params) => {
 			const session = ctx.requireSession();
@@ -233,25 +237,14 @@ export function createSessionMethods(ctx) {
 				modelId: params?.modelId ?? defaultModelSelection().modelId,
 			};
 			await ctx.applyModelSelection(selection);
-			return makeSessionStateSnapshot({
-				sessionId: session.sessionId,
-				workspace: session.workspace,
-	            mode: session.mode,
-				modelSelection: session.modelSelection,
-			});
+			return visibleSnapshot(session);
 		},
 
 		"session/setThoughtLevel": async (params) => {
 			const session = ctx.requireSession();
 			await ctx.applyThoughtLevel(params?.thoughtLevel);
 			if (typeof params?.thoughtLevel === "string" && params.thoughtLevel) ctx.broadcastConversationSnapshot();
-			return makeSessionStateSnapshot({
-				sessionId: session.sessionId,
-				workspace: session.workspace,
-				mode: session.mode,
-				modelSelection: session.modelSelection,
-				thoughtLevels: { available: session.thoughtLevels ?? [], current: session.thoughtLevel },
-			});
+			return visibleSnapshot(session);
 		},
 
 		"session/read": (params) => {
@@ -263,7 +256,7 @@ export function createSessionMethods(ctx) {
 			// 否则改名后宿主侧 session/read 会把派生标题当权威值盖回 UI。titleSource 不进
 			// snapshot（v4 wire meta 接入是后续轮的空挂设计，这里只在桥内持久化层生效）。
 			const customTitle = session.titleSource === "custom" && typeof session.title === "string" && session.title ? session.title : null;
-	        return makeSessionStateSnapshot({...session,title:customTitle ?? (firstText ? Array.from(firstText).slice(0,30).join("") : session.title),thoughtLevels:{available:session.thoughtLevels??[],current:session.thoughtLevel}});
+			return visibleSnapshot({ ...session, title: customTitle ?? (firstText ? Array.from(firstText).slice(0, 30).join("") : session.title) }, rows);
 		},
 		// 真实会话列表：读 sessions-index 持久化摘要 + 逐会话文件补充 mode/model。
 		// session/messages、session/events 不再注册——宿主全仓无调用方，历史事件也不
