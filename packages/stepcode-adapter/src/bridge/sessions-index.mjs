@@ -71,7 +71,7 @@ export function createSessionsIndex(ctx) {
 		}
 	}
 
-	function persistedSummariesFor(workspacePath, identity = Boolean(ctx.primarySession?.workspace?.workspaceIdentity) || !isAbsolute(String(workspacePath)), { afterWatermarks, sessionIds, projectSummary } = {}) {
+	function persistedSummariesFor(workspacePath, identity = Boolean(ctx.primarySession?.workspace?.workspaceIdentity) || !isAbsolute(String(workspacePath)), { afterWatermarks, sessionIds, projectSummary, latestLimit } = {}) {
 		const workspaces = readPersistedWorkspaces();
 		const key = normalizeWorkspaceKey(workspacePath, identity);
 		const legacyKey = String(workspacePath).replaceAll("/", "\\").toLowerCase();
@@ -87,11 +87,16 @@ export function createSessionsIndex(ctx) {
 		for (const summary of scoped) if (summary && typeof summary.sessionId === "string" && !tombstones.has(summary.sessionId) && !unique.has(summary.sessionId)) unique.set(summary.sessionId, summary);
 		// 增量推送原本读完全部聊天正文才按水位丢弃旧摘要，历史越长重复 IO 越多。
 		// 先按同一水位过滤；完整快照不传水位，仍逐条校正空草稿，不引入正文缓存。
-		return [...unique.values()].filter(s => {
+		let candidates = [...unique.values()].filter(s => {
 			if (sessionIds && !sessionIds.has(s.sessionId)) return false;
 			const watermark = afterWatermarks?.get(s.sessionId);
 			return watermark === undefined || watermark < (Number(s.lastActivityAt) || 0);
-		}).map(s => {
+		});
+		// 列表只要前几项时，先按同一水位排序截断，避免读取随后会被丢弃的历史。
+		// 旧索引的异常时间仍由原投影补默认值后排序，不能在这里猜测次序。
+		if (Number.isFinite(latestLimit) && latestLimit > 0 && candidates.every(s => Number.isFinite(Number(s.lastActivityAt)) && Number(s.lastActivityAt) !== 0))
+			candidates = candidates.sort((a, b) => Number(b.lastActivityAt) - Number(a.lastActivityAt)).slice(0, latestLimit);
+		return candidates.map(s => {
 			const saved = ctx.readConversation(s.sessionId);
 			const summary = saved?.rows?.length === 0 ? { ...s, phase: "draft" } : s;
 			// session/list 复用本次读取的元数据，避免为 mode/model 再解析整份历史；不驻留正文。

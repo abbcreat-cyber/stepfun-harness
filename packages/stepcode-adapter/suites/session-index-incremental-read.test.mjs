@@ -32,7 +32,13 @@ test("索引先按水位筛选再读正文，完整重同步与空草稿校正�
     v4Subscriptions: new Map([[topic, "sub"]]),
     readConversation(id) {
       reads.push(id);
-      return { rows: id === "empty" ? [] : [{}], session: { mode: "plan", modelSelection: { providerId: "saved-provider", modelId: "saved-model" } } };
+      return {
+        rows: id === "empty" ? [] : [{}],
+        session: {
+          mode: "plan",
+          modelSelection: { providerId: "saved-provider", modelId: "saved-model" },
+        },
+      };
     },
     notify(_method, frame) {
       frames.push(frame);
@@ -105,12 +111,50 @@ test("索引先按水位筛选再读正文，完整重同步与空草稿校正�
     Object.assign(ctx, index);
     const methods = createSessionMethods(ctx);
     reads.length = 0;
+    const limited = methods["session/list"]({
+      workspace: { workspacePath: root, workspaceIdentity: workspace },
+      limit: 1,
+    });
+    assert.deepEqual(
+      limited.sessions.map((s) => s.sessionId),
+      ["empty"],
+    );
+    assert.deepEqual(reads, ["empty"]);
+    // 同时间戳必须维持原索引顺序；时间异常则保留旧兼容路径。
+    summaries[1].lastActivityAt = 6;
+    await save();
+    reads.length = 0;
+    assert.equal(
+      methods["session/list"]({
+        workspace: { workspacePath: root, workspaceIdentity: workspace },
+        limit: 1,
+      }).sessions[0].sessionId,
+      "b",
+    );
+    assert.deepEqual(reads, ["b"]);
+    summaries[1].lastActivityAt = 0;
+    await save();
+    reads.length = 0;
+    assert.equal(
+      methods["session/list"]({
+        workspace: { workspacePath: root, workspaceIdentity: workspace },
+        limit: 1,
+      }).sessions[0].sessionId,
+      "b",
+    );
+    assert.deepEqual(reads, ["b", "empty"]);
+    summaries[1].lastActivityAt = 4;
+    await save();
+    reads.length = 0;
     const selected = methods["session/list"]({
       workspace: { workspacePath: root, workspaceIdentity: workspace },
       sessionIds: ["b", "b", "other-tenant", "missing", 42, ""],
     });
     assert.equal(selected.sessions[0].mode, "plan");
-    assert.deepEqual(selected.sessions[0].model, { providerId: "saved-provider", modelId: "saved-model" });
+    assert.deepEqual(selected.sessions[0].model, {
+      providerId: "saved-provider",
+      modelId: "saved-model",
+    });
     assert.deepEqual(
       selected.sessions.map((s) => s.sessionId),
       ["b"],

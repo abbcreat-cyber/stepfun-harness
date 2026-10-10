@@ -141,7 +141,7 @@ export function createStepPluginHandlers(
       });
     return { plugins, diagnostics };
   }
-  async function setEnabled(params) {
+  async function setEnabledWithSnapshot(params) {
     if (typeof params.enabled !== "boolean") throw new Error("插件开关必须为布尔值");
     const name = safeName(params.pluginId);
     let before = (await scan()).plugins.find((p) => safeName(p.id) === name);
@@ -204,8 +204,13 @@ export function createStepPluginHandlers(
           );
       }
     });
-    const plugin = (await scan()).plugins.find((p) => safeName(p.id) === name);
-    return { plugin, enabled: plugin.enabled };
+    const snapshot = await scan();
+    const plugin = snapshot.plugins.find((p) => safeName(p.id) === name);
+    return { plugin, enabled: plugin.enabled, snapshot };
+  }
+  async function setEnabled(params) {
+    const { plugin, enabled } = await setEnabledWithSnapshot(params);
+    return { plugin, enabled };
   }
   async function catalog() {
     const { plugins } = await scan();
@@ -230,8 +235,8 @@ export function createStepPluginHandlers(
         })),
     };
   }
-  async function overview() {
-    const { plugins, diagnostics } = await scan();
+  async function overview(snapshot) {
+    const { plugins, diagnostics } = snapshot ?? await scan();
     return {
       marketplaces: [...new Set(plugins.map((p) => p.marketplace))].map((marketplace) => ({
         id: marketplace,
@@ -269,7 +274,7 @@ export function createStepPluginHandlers(
     "plugins/list": scan,
     "plugins/referenceCatalog": catalog,
     "plugins/referenceCatalogWithCategory": catalog,
-    "plugins/overview": overview,
+    "plugins/overview": () => overview(),
     "plugins/marketplace/update": async (params = {}) => {
       // 前端刷新会先调用 update 再读 overview；本地来源应重新扫描，不能落入 method-not-found。
       const current = await overview();
@@ -287,9 +292,10 @@ export function createStepPluginHandlers(
       return { pluginId: p.pluginId, diagnostics: [] };
     },
     "plugins/install": async (p) => {
-      if (!p.dryRun) await setEnabled({ pluginId: p.pluginId ?? p.pluginName, enabled: true });
+      // 安装后已经重新扫描，直接用该结果生成列表，不能再扫描第三遍。
+      const installed = p.dryRun ? null : await setEnabledWithSnapshot({ pluginId: p.pluginId ?? p.pluginName, enabled: true });
       return {
-        installedPlugins: (await overview()).installedPlugins,
+        installedPlugins: (await overview(installed?.snapshot)).installedPlugins,
         dependencyClosure: [],
         diagnostics: [],
       };

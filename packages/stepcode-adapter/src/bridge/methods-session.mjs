@@ -280,7 +280,7 @@ export function createSessionMethods(ctx) {
 			};
 			// 指定少量 sessionIds 的查询不能先读遍全部历史正文，筛选交给索引读取入口。
 			const sessions = ctx.persistedSummariesFor(params?.workspace?.workspaceIdentity || params?.workspace?.workspaceKey || workspacePath,
-				Boolean(params?.workspace?.workspaceIdentity) || Boolean(params?.workspace?.workspaceKey && params.workspace.workspaceKey !== workspacePath), { sessionIds: requestedIds,
+				Boolean(params?.workspace?.workspaceIdentity) || Boolean(params?.workspace?.workspaceKey && params.workspace.workspaceKey !== workspacePath), { sessionIds: requestedIds, latestLimit: limit,
 				projectSummary: (summary, savedSession) => {
 					const session = ctx.primarySession?.sessionId === summary.sessionId ? ctx.primarySession : savedSession;
 					const phase = phaseOf(summary);
