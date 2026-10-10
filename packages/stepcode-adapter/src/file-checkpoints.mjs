@@ -57,10 +57,10 @@ export function registerFileCheckpoints(pi) {
   // 不补造旧记录的 after，历史中无法证明完成的 checkpoint 仍然拒绝撤销。
   pi.on("before_agent_start", () => pending.clear());
   pi.on("tool_call", async (event, ctx) => {
-    if (!["write_file", "edit_file", "write", "edit", "run_command", "bash"].includes(event.toolName)) return;
+    if (!["write_file", "edit_file", "write", "edit", "run_command", "bash", "powershell"].includes(event.toolName)) return;
     const user = ctx.sessionManager.getBranch().findLast(e => e.type === "message" && e.message?.role === "user");
     if (!user) return;
-    const ignored = ["run_command", "bash"].includes(event.toolName);
+    const ignored = ["run_command", "bash", "powershell"].includes(event.toolName);
     const raw = event.input?.path ?? event.input?.file_path;
     const rawPath = typeof raw === "string" && /^~[\\/]/.test(raw) ? resolve(homedir(), raw.slice(2)) : raw;
     const record = { userId: user.id, toolCallId: event.toolCallId, toolName: event.toolName,

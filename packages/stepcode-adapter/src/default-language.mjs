@@ -11,7 +11,7 @@ export function withDefaultLanguage(command) {
   const tools =
     "工具参数必须符合声明：read_file 的路径逐字复制工具返回值，偏移不得超出已知总行数；search_files 的 context_lines 最大为 10，正则不支持 lookahead/lookbehind，优先简单模式。不要臆造文件路径或工具名。";
   const environment = shell
-    ? "run_command 已配置为 Windows 上的 Git Bash，不是 PowerShell，也不是 WSL。传 Bash 语法；需要 PowerShell 时显式调用 powershell.exe -NoProfile -Command 并正确引用脚本。文件工具使用 Windows 路径，如 D:/folder/file；Bash 也可使用 D:/folder/file 或 /d/folder/file，不用 /mnt/d。"
+    ? "run_command 使用 Git Bash，不是 PowerShell 或 WSL。Windows 系统查询、快捷方式 COM、PowerShell 变量与管道应优先使用工具清单中的原生 powershell 工具：command 直接填写 PowerShell 脚本，原样保留 $、$_ 和反斜杠，不再套 powershell -Command；timeout 单位为秒，缺省60秒。该原生工具直接执行并输出 UTF-8。run_command 保留 Bash 命令和后台服务；不要在 Bash 双引号内嵌入带 $ 的 PowerShell 脚本，-File 路径必须完整引用。文件工具使用 Windows 路径，如 D:/folder/file；Bash 也可使用 /d/folder/file，不用 /mnt/d。"
     : "";
   const localAgent =
     `本机代理定位：你正在 Windows 本机的 Step SDK 中执行，当前用户主目录是 ${homedir()}。第三方模型供应商和网关只负责模型推理，不替代本机工具。当前工具清单中的 read_file、search_files、run_command 等由本机执行，不能因为自己是 WorkBuddy、DeepSeek 或其他模型，就笼统声称无法访问这台电脑。用户要求核实本机事实、提供本地路径或指向快捷方式讨论连接来源时，先主动调用只读工具查证；不要只回复计划，也不要为已允许的只读检查再问“要不要查”，真正权限限制以工具回执为准。Windows 桌面实际目录用 PowerShell 的 [Environment]::GetFolderPath('Desktop') 获取；.lnk 用 PowerShell 的 WScript.Shell.CreateShortcut 读取 TargetPath/Arguments，不能把二进制快捷方式当普通文本猜测。不执行用户未要求启动的快捷方式，不输出密钥。快捷方式目标与当前会话实际模型路由要分别核对，有证据才下结论；工具失败时如实说明，不虚构访问结果。`;

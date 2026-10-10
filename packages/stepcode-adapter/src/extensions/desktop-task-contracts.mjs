@@ -5,10 +5,12 @@ import { registerAssistantOpeningHook, withOpeningTimingPolicy } from "../assist
 import { readBuiltinHooks, FIRST_PRINCIPLES_REMINDER } from "../builtin-hooks.mjs";
 import { orderRuntimeNotices, withDesktopInputOrigin } from "../runtime-notice-context.mjs";
 import { registerFileCheckpoints } from "../file-checkpoints.mjs";
+import { nativePowerShellContract } from "../native-powershell.mjs";
 
 /** 给模型真实产品工具边界，并在执行前阻止把常驻规则变成烧迭代的工作目标。 */
 export default function desktopTaskContracts(pi) {
   if (process.env.STEPCODE_TASK_MODE !== "desktop") return;
+  nativePowerShellContract(pi);
   let loadedSkills = [], pluginDiscoveryContext = "";
   let hookSettings = {}, hookSettingsError = "";
   let needsPluginTarget = false;
@@ -24,7 +26,7 @@ export default function desktopTaskContracts(pi) {
   });
   pi.on("tool_call", async (event) => {
     if (hookSettingsError) return { block: true, terminate: true, reason: hookSettingsError };
-    if (needsPluginTarget && ["find_files", "search_files", "list_directory", "run_command"].includes(event.toolName)) {
+    if (needsPluginTarget && ["find_files", "search_files", "list_directory", "run_command", "powershell"].includes(event.toolName)) {
       rejectedTargetSearches++;
       return { block: true, ...(rejectedTargetSearches > 1 ? { terminate: true } : {}), reason: "用户点选的是插件能力，没有提供文件附件或具体任务。不要猜测文件或扫描磁盘；请简短说明该插件用途，并询问要处理哪个文件或制作什么内容。" };
     }
