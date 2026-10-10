@@ -118,6 +118,48 @@ test("刷新失败不自旋，后续独立通知仍可刷新", async () => {
   }
 });
 
+test("worker 退出释放旧订阅与反向请求，共享连接和替代 worker 保留", async () => {
+  const f = fixture();
+  try {
+    const subscribe = (w, id, connectionId) => {
+      f.router.receive({
+        id,
+        method: "v4/conversation/subscribe",
+        params: { topic: `conversation/${w.key}`, connectionId },
+      });
+      f.emit(w.child, { id: w.child.frames.at(-1).id, result: { ack: { subscriptionId: id } } });
+    };
+    subscribe(f.a, "a-shared", "shared");
+    subscribe(f.a, "a-private", "private");
+    subscribe(f.b, "b-shared", "shared");
+    f.router.connectionFlowStates.set("shared", "saturated");
+    f.router.connectionFlowStates.set("private", "closed");
+    f.emit(f.a.child, { id: "host-old", method: "confirm", params: {} });
+    f.emit(f.b.child, { id: "host-live", method: "confirm", params: {} });
+    f.router.actorOwners.set("actor-a", "a");
+    f.router.workers.delete("a");
+    const replacement = f.router.worker("a");
+    subscribe(replacement, "a-new", "replacement");
+    f.a.child.emit("close");
+    assert.equal(f.router.subscriptions.has("a-shared"), false);
+    assert.equal(f.router.subscriptions.has("a-private"), false);
+    assert.equal(f.router.subscriptions.get("a-new"), replacement);
+    assert.equal(f.router.workers.get("a"), replacement);
+    assert.equal(f.router.hostRequests.has("host-old"), false);
+    assert.equal(f.router.hostRequests.get("host-live"), f.b);
+    assert.equal(f.router.connectionFlowStates.get("shared"), "saturated");
+    assert.equal(f.router.connectionFlowStates.has("private"), false);
+    assert.equal(f.router.actorOwners.get("actor-a"), "a");
+    const before = f.a.child.frames.length;
+    f.router.receive({ id: "host-old", result: {} });
+    assert.equal(f.a.child.frames.length, before);
+    f.b.child.emit("close");
+    assert.equal(f.router.connectionFlowStates.has("shared"), false);
+  } finally {
+    await f.cleanup();
+  }
+});
+
 for (const state of ["saturated", "closed"]) {
   test(`共享连接 ${state} 在取消一个会话后仍限制其他会话，最后订阅才回收`, async () => {
     const f = fixture();

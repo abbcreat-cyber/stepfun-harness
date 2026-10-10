@@ -69,6 +69,7 @@ export class SessionRouter {
       child.once("close", () => {
         worker.indexRefreshClosed = true;
         if (this.workers.get(key) === worker) this.workers.delete(key);
+        this.releaseWorkerRoutes(worker);
         for (const pending of worker.pending.values())
           pending.finish({ error: { code: -32000, message: "会话执行进程已退出，请重试" } });
         worker.pending.clear();
@@ -146,10 +147,7 @@ export class SessionRouter {
         worker.subscriptions.delete(pending.params.subscriptionId);
         worker.subscriptionDetails.delete(pending.params.subscriptionId);
         // 连接由多个会话 worker 共享；取消成功且所有 worker 均无订阅后才能回收流控状态。
-        if (removed && ![...this.workers.values()].some((owner) =>
-          [...owner.subscriptionDetails.values()].some((d) => d.connectionId === removed.connectionId))) {
-          this.connectionFlowStates.delete(removed.connectionId);
-        }
+        if (removed) this.releaseUnusedConnection(removed.connectionId);
       }
       if (
         !frame.error &&
@@ -167,6 +165,21 @@ export class SessionRouter {
     const id = `router-${process.pid}-${++this.ordinal}`;
     worker.pending.set(id, { method, params, finish });
     worker.child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
+  }
+  releaseUnusedConnection(connectionId) {
+    if (![...this.workers.values()].some((owner) =>
+      [...owner.subscriptionDetails.values()].some((d) => d.connectionId === connectionId))) {
+      this.connectionFlowStates.delete(connectionId);
+    }
+  }
+  releaseWorkerRoutes(worker) {
+    // 进程退出后旧路由不能继续接受响应或重同步；只删指向旧对象的记录，避免误伤替代 worker。
+    const connections = new Set([...worker.subscriptionDetails.values()].map((d) => d.connectionId));
+    for (const [id, owner] of this.subscriptions) if (owner === worker) this.subscriptions.delete(id);
+    for (const [id, owner] of this.hostRequests) if (owner === worker) this.hostRequests.delete(id);
+    worker.subscriptions.clear();
+    worker.subscriptionDetails.clear();
+    for (const id of connections) this.releaseUnusedConnection(id);
   }
   refreshSessionIndex(worker) {
     if (this.closed || worker.indexRefreshClosed || this.workers.get(WORKSPACE) !== worker) return;

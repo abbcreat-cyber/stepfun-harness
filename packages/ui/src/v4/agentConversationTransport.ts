@@ -444,6 +444,7 @@ export function createAgentConversationTransport(
         }
       }
       const chunks: Uint8Array[] = [];
+      let directBytes: Uint8Array | undefined;
       let offset = 0;
       let totalBytes: number | null = null;
       let mediaType: string | null = null;
@@ -481,17 +482,24 @@ export function createAgentConversationTransport(
         if (result.nextOffset !== null && result.nextOffset !== nextOffset) {
           throw new Error("fault.attachment.previewOffsetMismatch");
         }
-        chunks.push(chunk);
+        // 常见小图片直接填最终缓冲，避免结束时仍持有一整份分块；大附件保持渐进分配。
+        if (!directBytes && totalBytes <= 2 * 1024 * 1024) {
+          directBytes = new Uint8Array(totalBytes);
+        }
+        if (directBytes) directBytes.set(chunk, offset);
+        else chunks.push(chunk);
         if (result.nextOffset === null) {
           if (nextOffset !== totalBytes) {
             throw new Error("fault.attachment.previewTruncated");
           }
           params.signal?.throwIfAborted();
-          const bytes = new Uint8Array(totalBytes);
+          const bytes = directBytes ?? new Uint8Array(totalBytes);
           let writeOffset = 0;
-          for (const part of chunks) {
-            bytes.set(part, writeOffset);
-            writeOffset += part.byteLength;
+          if (!directBytes) {
+            for (const part of chunks) {
+              bytes.set(part, writeOffset);
+              writeOffset += part.byteLength;
+            }
           }
           return { bytes, mediaType };
         }
