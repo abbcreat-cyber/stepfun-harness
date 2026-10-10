@@ -31,7 +31,10 @@ test("renamed parent directories and changed entry types cannot leave stale sear
   await service.searchWorkspaceFiles(query);
   await service.searchWorkspaceFiles({ ...query, rootPath: otherRoot });
   await rename(join(rootPath, "before"), join(rootPath, "after"));
-  assert.deepEqual((await service.searchWorkspaceFiles(query)).map(x => x.relativePath), ["after/report.md"]);
+  // 模糊匹配也检查绝对路径，测试根目录可能让父目录一并命中；这里验证文件迁移，不限制合法目录候选。
+  const renamed = await service.searchWorkspaceFiles(query);
+  assert.deepEqual(renamed.filter(x => x.type === "file").map(x => x.relativePath), ["after/report.md"]);
+  assert.ok(!renamed.some(x => x.relativePath.startsWith("before/")));
   await rm(join(rootPath, "after/report.md"));
   await mkdir(join(rootPath, "after/report.md"));
   assert.equal((await service.searchWorkspaceFiles(query))[0]?.type, "directory");

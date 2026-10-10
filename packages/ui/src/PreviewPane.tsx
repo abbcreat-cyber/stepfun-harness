@@ -28,6 +28,7 @@ import type { FileBinaryPreview, FileMediaPreview, FileTextSlice } from "@zcode/
 import { TID_PREVIEW_PANE } from "@zcode/shared";
 import { useWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { usePreviewFileWatch } from "@/hooks/usePreviewFileWatch.js";
+import { readPreviewBytes } from "@/lib/readPreviewBytes.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { usePdfViewerLabels, usePptxViewerLabels } from "@/hooks/usePreviewViewerLabels.js";
 import {
@@ -1166,33 +1167,8 @@ export function PreviewPane({
     setError(null);
 
     const path = pdfSource.path;
-    const readWholeFile = async (totalBytes: number): Promise<Uint8Array | null> => {
-      const chunks: Uint8Array[] = [];
-      let offset = 0;
-      while (offset < totalBytes) {
-        const chunk = await fileService.readFileRange({
-          path,
-          offset,
-          length: PDF_RANGE_CHUNK_BYTES,
-        });
-        if (disposed) {
-          return null;
-        }
-        if (chunk.length === 0) {
-          // 读取期间文件被截断时按已读部分返回，交给 pdf.js 判定完整性，避免死循环
-          break;
-        }
-        chunks.push(chunk);
-        offset += chunk.length;
-      }
-      const data = new Uint8Array(offset);
-      let position = 0;
-      for (const chunk of chunks) {
-        data.set(chunk, position);
-        position += chunk.length;
-      }
-      return data;
-    };
+    const readWholeFile = (totalBytes: number) => readPreviewBytes(totalBytes, PDF_RANGE_CHUNK_BYTES,
+      (offset, length) => fileService.readFileRange({ path, offset, length }), () => disposed);
 
     void (async () => {
       const fileStat = await fileService.stat({ path });
