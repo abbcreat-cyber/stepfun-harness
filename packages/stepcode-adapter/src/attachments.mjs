@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, rm, rename, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, open, readFile, rm, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join } from "node:path";
 const MAX = 20 * 1024 * 1024,
   CHUNK = 512 * 1024;
@@ -30,6 +30,16 @@ function assertImage(bytes, mime) {
               bytes.subarray(8, 12).toString() === "WEBP"
             : false;
   if (!valid) throw new Error("图片内容与格式不符，请重新粘贴");
+}
+async function readRange(handle, offset, length) {
+  const bytes = Buffer.allocUnsafe(length);
+  let received = 0;
+  while (received < length) {
+    const result = await handle.read(bytes, received, length - received, offset + received);
+    if (!result.bytesRead) throw new Error("附件在读取过程中发生变化，请重试");
+    received += result.bytesRead;
+  }
+  return bytes;
 }
 export class AttachmentStore {
   constructor(root) {
@@ -168,24 +178,28 @@ export class AttachmentStore {
     }
     return targetDir;
   }
-  async resolve(sessionId, attachment) {
-    let bytes,
-      mime = attachment.mime, fileName = attachment.fileName, id;
+  async source(sessionId, attachment) {
+    const { mime, fileName } = attachment;
     if (/^step-attachment:[a-f0-9]{64}$/.test(attachment.ref)) {
-      id = attachment.ref.slice(16);
+      const id = attachment.ref.slice(16);
       const meta = await this.metadata(sessionId, id);
       if (!meta) throw new Error("找不到当前会话的已提交附件");
-      mime = meta.mime;
-      fileName = meta.fileName;
-      bytes = await readFile(join(this.directory(sessionId), `${id}.bin`));
-    } else if (isAbsolute(attachment.ref)) {
+      return { path: join(this.directory(sessionId), `${id}.bin`), id, mime: meta.mime, fileName: meta.fileName };
+    }
+    if (isAbsolute(attachment.ref)) return { path: attachment.ref, mime, fileName };
+    throw new Error("附件引用无效");
+  }
+  async resolve(sessionId, attachment) {
+    const source = await this.source(sessionId, attachment), { path, mime, fileName } = source;
+    let id = source.id;
+    if (!id) {
       // 桌面选择器通过现有 localPath 协议发文件；不能把合法文档当成图片拒绝。
-      const info = await stat(attachment.ref);
+      const info = await stat(path);
       if (!info.isFile()) throw new Error("附件引用必须是普通文件");
       if (info.size > MAX) throw new Error("附件超过20MB");
-      bytes = await readFile(attachment.ref);
-      id = hash(JSON.stringify([sessionId, attachment.ref, hash(bytes)]));
-    } else throw new Error("附件引用无效");
+    }
+    const bytes = await readFile(path);
+    if (!id) id = hash(JSON.stringify([sessionId, attachment.ref, hash(bytes)]));
     if (bytes.length > MAX) throw new Error("附件超过20MB");
     if (imageTypes.has(mime)) assertImage(bytes, mime);
     return { bytes, mime, fileName, id };
@@ -230,14 +244,25 @@ export class AttachmentStore {
       p.limit > CHUNK
     )
       throw new Error("附件读取范围无效");
-    const attachment = row.attachments.find((a) => a.ref === p.ref),
-      { bytes, mime } = await this.resolve(p.sessionId, attachment),
-      end = Math.min(bytes.length, p.offset + p.limit);
-    return {
-      dataBase64: bytes.subarray(p.offset, end).toString("base64"),
-      mediaType: mime,
-      totalBytes: bytes.length,
-      nextOffset: end < bytes.length ? end : null,
-    };
+    const attachment = row.attachments.find((a) => a.ref === p.ref);
+    const { path, mime } = await this.source(p.sessionId, attachment);
+    const handle = await open(path, "r");
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new Error("附件引用必须是普通文件");
+      if (info.size > MAX) throw new Error("附件超过20MB");
+      // 预览每块只读请求范围；图片仍校验原有签名，不再为每块读完整文件并计算哈希。
+      if (imageTypes.has(mime)) assertImage(await readRange(handle, 0, Math.min(12, info.size)), mime);
+      const end = Math.min(info.size, p.offset + p.limit);
+      const bytes = await readRange(handle, p.offset, Math.max(0, end - p.offset));
+      return {
+        dataBase64: bytes.toString("base64"),
+        mediaType: mime,
+        totalBytes: info.size,
+        nextOffset: end < info.size ? end : null,
+      };
+    } finally {
+      await handle.close();
+    }
   }
 }

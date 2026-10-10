@@ -248,9 +248,12 @@ export function createSessionMethods(ctx) {
 		},
 
 		"session/read": (params) => {
-			const session = ctx.primarySession?.sessionId === params.sessionId ? ctx.primarySession : ctx.readConversation(params.sessionId)?.session;
+			const isPrimary = ctx.primarySession?.sessionId === params.sessionId;
+			// 元数据和正文来自同一份读取结果，避免重复解析以及混用两次落盘的内容。
+			const saved = isPrimary ? null : ctx.readConversation(params.sessionId);
+			const session = isPrimary ? ctx.primarySession : saved?.session;
 			if (!session) throw new BridgeError(-32002, "找不到该会话的本地记录");
-			const rows = ctx.primarySession?.sessionId === params.sessionId ? ctx.conversationRows : ctx.readConversation(params.sessionId)?.rows;
+			const rows = isPrimary ? ctx.conversationRows : saved?.rows;
 			const firstText = rows?.find(r=>r.kind==="userInput")?.text;
 			// P1-01 防覆盖守卫（读侧）：custom 标题直接原样返回，不按首条用户消息重新派生——
 			// 否则改名后宿主侧 session/read 会把派生标题当权威值盖回 UI。titleSource 不进
