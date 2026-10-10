@@ -41,15 +41,20 @@ export function createConversationStore(ctx) {
 	}
 	const statisticsBySession = new Map();
 	const statisticsLoads = new Map();
+	function initializeStatistics(sessionId, saved) {
+	 if (!statisticsBySession.has(sessionId)) statisticsBySession.set(sessionId,new SessionStatistics(saved));
+	 return statisticsBySession.get(sessionId);
+	}
 	function sessionStatistics(sessionId) {
-	 if (!statisticsBySession.has(sessionId)) statisticsBySession.set(sessionId,new SessionStatistics(readConversation(sessionId)?.statistics));
+	 if (!statisticsBySession.has(sessionId)) initializeStatistics(sessionId,readConversation(sessionId)?.statistics);
 	 return statisticsBySession.get(sessionId);
 	}
 	async function hydrateStatistics(sessionId) {
 	 if (!statisticsLoads.has(sessionId)) {
 	  const load = (async () => {
 	   const saved=readConversation(sessionId);
-	   const stats=sessionStatistics(sessionId);
+	   // 首次恢复复用已读取的正文统计，避免再次同步读盘和解析；已有实时账本不能覆盖。
+	   const stats=initializeStatistics(sessionId,saved?.statistics);
 	   // 启动后与原生账本补账：崩溃前已落账但未写快照的响应不能丢失。
 	   const session=ctx.primarySession?.sessionId===sessionId ? ctx.primarySession : saved?.session;
 	   if (!session?.stepSessionFile) return;

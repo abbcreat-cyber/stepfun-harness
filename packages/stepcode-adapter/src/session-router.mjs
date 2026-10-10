@@ -59,11 +59,15 @@ export class SessionRouter {
       subscriptionDetails: new Map(),
       lastUsed: Date.now(),
       exit: null,
+      indexRefreshPending: false,
+      indexRefreshDirty: false,
+      indexRefreshClosed: false,
     };
     this.workers.set(key, worker);
     child.stdin.on("error", () => {});
     worker.exit = new Promise((resolve) =>
       child.once("close", () => {
+        worker.indexRefreshClosed = true;
         if (this.workers.get(key) === worker) this.workers.delete(key);
         for (const pending of worker.pending.values())
           pending.finish({ error: { code: -32000, message: "会话执行进程已退出，请重试" } });
@@ -72,6 +76,7 @@ export class SessionRouter {
       }),
     );
     child.on("error", (error) => {
+      worker.indexRefreshClosed = true;
       for (const pending of worker.pending.values())
         pending.finish({ error: { code: -32000, message: error.message } });
       worker.pending.clear();
@@ -86,7 +91,7 @@ export class SessionRouter {
       }
       if (frame.method === "bridge/sessionIndexChanged") {
         const admin = this.workers.get(WORKSPACE);
-        if (admin) this.send(admin, "bridge/refreshSessionIndex", {}, () => {});
+        if (admin) this.refreshSessionIndex(admin);
         return;
       }
       if (frame.method === "session/event") {
@@ -161,6 +166,20 @@ export class SessionRouter {
     const id = `router-${process.pid}-${++this.ordinal}`;
     worker.pending.set(id, { method, params, finish });
     worker.child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
+  }
+  refreshSessionIndex(worker) {
+    if (this.closed || worker.indexRefreshClosed || this.workers.get(WORKSPACE) !== worker) return;
+    // 多会话突发通知只保留一个在途刷新；完成后补刷期间的新变化，避免漏掉最终状态。
+    if (worker.indexRefreshPending) {
+      worker.indexRefreshDirty = true;
+      return;
+    }
+    worker.indexRefreshPending = true;
+    worker.indexRefreshDirty = false;
+    this.send(worker, "bridge/refreshSessionIndex", {}, () => {
+      worker.indexRefreshPending = false;
+      if (worker.indexRefreshDirty) this.refreshSessionIndex(worker);
+    });
   }
   rememberActorOwners(worker, snapshot) {
     if (snapshot.sessionId !== worker.key) return;
