@@ -318,14 +318,18 @@ export function createStepPluginHandlers(
       await writeFile(join(plugin.rootPath, "step-user-config.json"), "{}");
       return { pluginId: p.pluginId, diagnostics: [] };
     },
-    "plugins/validate": async () => ({
-      ok: !(await scan()).diagnostics.some((d) => d.severity === "error"),
-      diagnostics: (await scan()).diagnostics,
-      compatibility: {
-        runnable: ["mcp", "skill", "command", "zcode-node-repl"],
-        diagnosticOnly: [],
-        unsupported: [],
-      },
-    }),
+    "plugins/validate": async () => {
+      // 同一次检查只扫描一遍；诊断与 ok 使用同一结果，后续请求仍重新读取。
+      const { diagnostics } = await scan();
+      return {
+        ok: !diagnostics.some((d) => d.severity === "error"),
+        diagnostics,
+        compatibility: {
+          runnable: ["mcp", "skill", "command", "zcode-node-repl"],
+          diagnosticOnly: [],
+          unsupported: [],
+        },
+      };
+    },
   };
 }

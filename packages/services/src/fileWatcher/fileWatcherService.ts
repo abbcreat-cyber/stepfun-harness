@@ -8,6 +8,7 @@ import { registerMemoryDiagnosticsProvider } from "#src/memoryDiagnostics.js";
 
 /** 防抖时间（ms）——批量文件变更（如 git checkout）时避免频繁刷新 */
 const DEBOUNCE_MS = 150;
+const MAX_CHANGED_PATHS = 64;
 
 interface WatcherInstance {
   path: string;
@@ -67,7 +68,13 @@ export function createFileWatcherService(options?: {
 
           const changedPath = resolveFileWatchChangedPath(instance.path, fileName);
           if (changedPath) {
-            instance.pendingChangedPaths.add(changedPath);
+            if (!instance.hasUnknownChangedPath) {
+              instance.pendingChangedPaths.add(changedPath);
+              if (instance.pendingChangedPaths.size > MAX_CHANGED_PATHS) {
+                instance.pendingChangedPaths.clear();
+                instance.hasUnknownChangedPath = true;
+              }
+            }
           } else {
             instance.hasUnknownChangedPath = true;
           }
@@ -80,11 +87,18 @@ export function createFileWatcherService(options?: {
               !instance.hasUnknownChangedPath && instance.pendingChangedPaths.size === 1
                 ? instance.pendingChangedPaths.values().next().value
                 : undefined;
+            // 多个明确文件以前被压成未知目录变更，导致无关 PDF/文档也重新加载。
+            // 只传完整且有界的集合，未知或超限仍走原保守刷新，不能发送截断集合。
+            const changedPaths =
+              !instance.hasUnknownChangedPath && instance.pendingChangedPaths.size > 1
+                ? [...instance.pendingChangedPaths]
+                : undefined;
             instance.pendingChangedPaths.clear();
             instance.hasUnknownChangedPath = false;
             instance.changeEmitter.fire({
               dirPath: instance.path,
               ...(onlyChangedPath ? { changedPath: onlyChangedPath } : {}),
+              ...(changedPaths ? { changedPaths } : {}),
             });
           }, DEBOUNCE_MS);
         });

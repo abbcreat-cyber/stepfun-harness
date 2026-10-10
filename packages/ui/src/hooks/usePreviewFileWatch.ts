@@ -21,6 +21,12 @@ function normalizeFileWatchPathForCompare(path: string): string {
 
 function shouldReloadPreviewForWatchEvent(event: FileWatchEvent, filePath: string): boolean {
   if (!event.changedPath) {
+    if (event.changedPaths?.length) {
+      return event.changedPaths.some(
+        (path) =>
+          normalizeFileWatchPathForCompare(path) === normalizeFileWatchPathForCompare(filePath),
+      );
+    }
     return true;
   }
   return (

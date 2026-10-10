@@ -34,6 +34,8 @@ export interface FileWatchEvent {
    * 旧 Host、平台未返回 filename 或同一防抖窗口包含多个路径时省略，调用方应保守刷新。
    */
   changedPath?: string;
+  /** 多文件批次的完整路径集合（最多 64 项）；缺失或空集合时仍保守刷新。 */
+  changedPaths?: string[];
 }
 
 export interface FileTextSlice {

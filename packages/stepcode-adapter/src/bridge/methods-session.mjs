@@ -280,12 +280,9 @@ export function createSessionMethods(ctx) {
 			};
 			// 指定少量 sessionIds 的查询不能先读遍全部历史正文，筛选交给索引读取入口。
 			const sessions = ctx.persistedSummariesFor(params?.workspace?.workspaceIdentity || params?.workspace?.workspaceKey || workspacePath,
-				Boolean(params?.workspace?.workspaceIdentity) || Boolean(params?.workspace?.workspaceKey && params.workspace.workspaceKey !== workspacePath), { sessionIds: requestedIds })
-				.map((summary) => {
-					const saved = ctx.primarySession?.sessionId === summary.sessionId
-						? null
-						: ctx.readConversation(summary.sessionId);
-					const session = ctx.primarySession?.sessionId === summary.sessionId ? ctx.primarySession : saved?.session;
+				Boolean(params?.workspace?.workspaceIdentity) || Boolean(params?.workspace?.workspaceKey && params.workspace.workspaceKey !== workspacePath), { sessionIds: requestedIds,
+				projectSummary: (summary, savedSession) => {
+					const session = ctx.primarySession?.sessionId === summary.sessionId ? ctx.primarySession : savedSession;
 					const phase = phaseOf(summary);
 					return {
 						sessionId: summary.sessionId,
@@ -298,7 +295,7 @@ export function createSessionMethods(ctx) {
 						createdAt: Number(summary.createdAt) || Date.now(),
 						updatedAt: Number(summary.lastActivityAt) || Date.now(),
 					};
-				})
+				}})
 				.sort((a, b) => b.updatedAt - a.updatedAt)
 				.slice(0, limit);
 			return { sessions };

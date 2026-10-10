@@ -71,7 +71,7 @@ export function createSessionsIndex(ctx) {
 		}
 	}
 
-	function persistedSummariesFor(workspacePath, identity = Boolean(ctx.primarySession?.workspace?.workspaceIdentity) || !isAbsolute(String(workspacePath)), { afterWatermarks, sessionIds } = {}) {
+	function persistedSummariesFor(workspacePath, identity = Boolean(ctx.primarySession?.workspace?.workspaceIdentity) || !isAbsolute(String(workspacePath)), { afterWatermarks, sessionIds, projectSummary } = {}) {
 		const workspaces = readPersistedWorkspaces();
 		const key = normalizeWorkspaceKey(workspacePath, identity);
 		const legacyKey = String(workspacePath).replaceAll("/", "\\").toLowerCase();
@@ -91,7 +91,12 @@ export function createSessionsIndex(ctx) {
 			if (sessionIds && !sessionIds.has(s.sessionId)) return false;
 			const watermark = afterWatermarks?.get(s.sessionId);
 			return watermark === undefined || watermark < (Number(s.lastActivityAt) || 0);
-		}).map(s => { const saved=ctx.readConversation(s.sessionId);return saved?.rows?.length === 0 ? {...s,phase:"draft"} : s; });
+		}).map(s => {
+			const saved = ctx.readConversation(s.sessionId);
+			const summary = saved?.rows?.length === 0 ? { ...s, phase: "draft" } : s;
+			// session/list 复用本次读取的元数据，避免为 mode/model 再解析整份历史；不驻留正文。
+			return projectSummary ? projectSummary(summary, saved?.session) : summary;
+		});
 	}
 
 	/** 把 primarySession 的当前摘要落盘（建会话与 turn 终态时各一次）。 */
