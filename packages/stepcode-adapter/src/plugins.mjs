@@ -68,57 +68,70 @@ export function createStepPluginHandlers(
         if (e.code === "ENOENT") continue;
         throw e;
       }
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        try {
-          const path = join(directory, entry.name);
-          const declaration = await readStepPluginDeclaration(path);
-          if (!declaration) continue;
-          const { manifest } = declaration;
-          if (isMissingBundledPlugin(manifest)) continue;
-          if (manifest.stepOfficial && isUnavailableOfficialPlugin(manifest.id)) continue;
-          // 内部宿主由浏览器等能力管理；不能在用户目录暴露一个可独立停用的依赖开关。
-          if (manifest.stepOfficial === true && manifest.id === "node-repl-host") continue;
-          const marketplace = manifest.stepOfficial ? OFFICIAL_MARKETPLACE : "stepcode";
-          const id = `${safeName(manifest.id)}@${marketplace}`;
-          const mcp =
-            typeof manifest.mcpServers === "object" && manifest.mcpServers
-              ? Object.keys(manifest.mcpServers)
-              : [];
-          const components = manifest.stepOfficial
-            ? await officialPluginComponents(path, manifest)
-            : [{ kind: "mcp", items: mcp.map((name) => ({ name })) }];
-          let configuredOptions;
-          try {
-            configuredOptions = JSON.parse(
-              await readFile(join(path, "step-user-config.json"), "utf8"),
-            );
-          } catch (error) {
-            if (error.code !== "ENOENT") throw error;
-          }
-          plugins.push({
-            id,
-            name: manifest.name ?? manifest.id,
-            description: manifest.description,
-            version: manifest.version,
-            enabled: enabled && declaration.enabled,
-            source: manifest.stepOfficial ? "builtin" : "local",
-            marketplace,
-            rootPath: path,
-            skillRootCount: manifest.skills?.length ?? 0,
-            commandRootCount: manifest.commands?.length ?? 0,
-            mcpServerNames: mcp,
-            components,
-            ...(manifest.userConfig ? { userConfig: manifest.userConfig } : {}),
-            ...(configuredOptions ? { configuredOptions } : {}),
-            rootSource: "user",
-          });
-        } catch (error) {
-          diagnostics.push({
-            code: "step_plugin_manifest",
-            message: `${entry.name}: ${error.message}`,
-            severity: "warning",
-          });
+      const directories = entries.filter((entry) => entry.isDirectory());
+      // 只并发独立目录的读取，最多4项；准备/写入/锁仍在原位置，结果按枚举顺序收集。
+      for (let offset = 0; offset < directories.length; offset += 4) {
+        const batch = await Promise.all(
+          directories.slice(offset, offset + 4).map(async (entry) => {
+            try {
+              const path = join(directory, entry.name);
+              const declaration = await readStepPluginDeclaration(path);
+              if (!declaration) return null;
+              const { manifest } = declaration;
+              if (isMissingBundledPlugin(manifest)) return null;
+              if (manifest.stepOfficial && isUnavailableOfficialPlugin(manifest.id)) return null;
+              // 内部宿主由浏览器等能力管理；不能在用户目录暴露一个可独立停用的依赖开关。
+              if (manifest.stepOfficial === true && manifest.id === "node-repl-host") return null;
+              const marketplace = manifest.stepOfficial ? OFFICIAL_MARKETPLACE : "stepcode";
+              const id = `${safeName(manifest.id)}@${marketplace}`;
+              const mcp =
+                typeof manifest.mcpServers === "object" && manifest.mcpServers
+                  ? Object.keys(manifest.mcpServers)
+                  : [];
+              const components = manifest.stepOfficial
+                ? await officialPluginComponents(path, manifest)
+                : [{ kind: "mcp", items: mcp.map((name) => ({ name })) }];
+              let configuredOptions;
+              try {
+                configuredOptions = JSON.parse(
+                  await readFile(join(path, "step-user-config.json"), "utf8"),
+                );
+              } catch (error) {
+                if (error.code !== "ENOENT") throw error;
+              }
+              return {
+                plugin: {
+                  id,
+                  name: manifest.name ?? manifest.id,
+                  description: manifest.description,
+                  version: manifest.version,
+                  enabled: enabled && declaration.enabled,
+                  source: manifest.stepOfficial ? "builtin" : "local",
+                  marketplace,
+                  rootPath: path,
+                  skillRootCount: manifest.skills?.length ?? 0,
+                  commandRootCount: manifest.commands?.length ?? 0,
+                  mcpServerNames: mcp,
+                  components,
+                  ...(manifest.userConfig ? { userConfig: manifest.userConfig } : {}),
+                  ...(configuredOptions ? { configuredOptions } : {}),
+                  rootSource: "user",
+                },
+              };
+            } catch (error) {
+              return {
+                diagnostic: {
+                  code: "step_plugin_manifest",
+                  message: `${entry.name}: ${error.message}`,
+                  severity: "warning",
+                },
+              };
+            }
+          }),
+        );
+        for (const result of batch) {
+          if (result?.plugin) plugins.push(result.plugin);
+          if (result?.diagnostic) diagnostics.push(result.diagnostic);
         }
       }
     }
@@ -236,7 +249,7 @@ export function createStepPluginHandlers(
     };
   }
   async function overview(snapshot) {
-    const { plugins, diagnostics } = snapshot ?? await scan();
+    const { plugins, diagnostics } = snapshot ?? (await scan());
     return {
       marketplaces: [...new Set(plugins.map((p) => p.marketplace))].map((marketplace) => ({
         id: marketplace,
@@ -279,10 +292,15 @@ export function createStepPluginHandlers(
       // 前端刷新会先调用 update 再读 overview；本地来源应重新扫描，不能落入 method-not-found。
       const current = await overview();
       const marketplaces = params.marketplace
-        ? current.marketplaces.filter(item => item.id === params.marketplace)
+        ? current.marketplaces.filter((item) => item.id === params.marketplace)
         : current.marketplaces;
-      if (params.marketplace && marketplaces.length === 0) throw new Error("找不到该 Step Code 插件来源");
-      return { marketplaces, ...(params.marketplace ? { marketplace: marketplaces[0] } : {}), diagnostics: current.diagnostics };
+      if (params.marketplace && marketplaces.length === 0)
+        throw new Error("找不到该 Step Code 插件来源");
+      return {
+        marketplaces,
+        ...(params.marketplace ? { marketplace: marketplaces[0] } : {}),
+        diagnostics: current.diagnostics,
+      };
     },
     "plugins/setEnabled": setEnabled,
     "plugins/restoreBuiltin": async (p) => {
@@ -293,7 +311,9 @@ export function createStepPluginHandlers(
     },
     "plugins/install": async (p) => {
       // 安装后已经重新扫描，直接用该结果生成列表，不能再扫描第三遍。
-      const installed = p.dryRun ? null : await setEnabledWithSnapshot({ pluginId: p.pluginId ?? p.pluginName, enabled: true });
+      const installed = p.dryRun
+        ? null
+        : await setEnabledWithSnapshot({ pluginId: p.pluginId ?? p.pluginName, enabled: true });
       return {
         installedPlugins: (await overview(installed?.snapshot)).installedPlugins,
         dependencyClosure: [],

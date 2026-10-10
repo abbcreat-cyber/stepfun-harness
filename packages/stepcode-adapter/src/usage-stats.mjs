@@ -5,6 +5,19 @@ const count = (value) => Number.isFinite(value) && value >= 0 ? value : 0;
 const dayOffset = (day, offset) => new Date(Date.parse(`${day}T12:00:00Z`) + offset * 86400000).toISOString().slice(0, 10);
 export const workspaceKey = (value) => String(value).replaceAll("\\", "/").replace(/\/$/, "").toLowerCase();
 
+function usageMessageEntry(entry) {
+  const message = entry?.type === "message" && entry.message;
+  if (!message) return null;
+  const usage = message.usage;
+  // 聚合不使用正文/思考/工具输出；解析后立即丢弃这些大字段，避免跨会话累计驻留。
+  return { type: "message", id: entry.id, timestamp: entry.timestamp, message: {
+    role: message.role, model: message.model, toolName: message.toolName,
+    isError: message.isError, stopReason: message.stopReason,
+    usage: usage ? { input: usage.input, output: usage.output, cacheRead: usage.cacheRead,
+      cacheWrite: usage.cacheWrite, reasoning: usage.reasoning, totalTokens: usage.totalTokens } : undefined,
+  } };
+}
+
 /** 原生账本是唯一事实源；不从文本长度估算，也不重复累加同一 entry。 */
 export async function readUsageSessions(root, workspaces) {
   const allowed = new Set(workspaces.map(workspaceKey));
@@ -18,9 +31,20 @@ export async function readUsageSessions(root, workspaces) {
       if (!file.endsWith(".jsonl")) continue;
       const lines = (await readFile(join(root, directory.name, file), "utf8")).split("\n");
       const entries = [];
+      let firstRecord = true;
       for (let i = 0; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
-        try { entries.push(JSON.parse(lines[i])); }
+        try {
+          const entry = JSON.parse(lines[i]);
+          if (firstRecord) {
+            entries.push({ type: entry?.type, id: entry?.id, cwd: entry?.cwd });
+            firstRecord = false;
+          } else {
+            if (entry === null) { entries.push(null); continue; }
+            const projected = usageMessageEntry(entry);
+            if (projected) entries.push(projected);
+          }
+        }
         catch (error) { if (i < lines.length - 1) throw error; }
       }
       if (entries[0]?.type === "session" && allowed.has(workspaceKey(entries[0].cwd))) sessions.push(entries);
@@ -43,7 +67,7 @@ export function buildUsageSnapshot(sessions, { range = "7d", timeZone = "Asia/Sh
   let requests = 0, errors = 0;
   for (const entries of sessions) {
     const sessionId = entries[0].id;
-    const timestamps = [];
+    let firstTime = Infinity, lastTime = -Infinity;
     for (const entry of entries) {
       if (entry.type !== "message" || !entry.message) continue;
       const time = Date.parse(entry.timestamp);
@@ -52,7 +76,9 @@ export function buildUsageSnapshot(sessions, { range = "7d", timeZone = "Asia/Sh
       if (date < start || date > today) continue;
       const key = `${sessionId}/${entry.id}`;
       if (seen.has(key)) continue;
-      seen.add(key); sessionIds.add(sessionId); timestamps.push(time);
+      seen.add(key); sessionIds.add(sessionId);
+      // 不把长会话的全部时间展开为函数参数，避免大账本触发调用栈上限。
+      firstTime = Math.min(firstTime, time); lastTime = Math.max(lastTime, time);
       const day = days.get(date) ?? { date, level: 0, totalTokens: 0, turnCount: 0, toolCallCount: 0, models: new Map() };
       days.set(date, day);
       const message = entry.message;
@@ -75,7 +101,7 @@ export function buildUsageSnapshot(sessions, { range = "7d", timeZone = "Asia/Sh
       model.totalTokens += total; model.inputTokens += input; model.outputTokens += output; model.requestCount++;
       models.set(modelId, model); day.models.set(modelId, (day.models.get(modelId) ?? 0) + total);
     }
-    if (timestamps.length) summary.longestSessionMs = Math.max(summary.longestSessionMs, Math.max(...timestamps) - Math.min(...timestamps));
+    if (firstTime !== Infinity) summary.longestSessionMs = Math.max(summary.longestSessionMs, lastTime - firstTime);
   }
   const activeDates = [...days.keys()].sort();
   let streak = 0, previous;
