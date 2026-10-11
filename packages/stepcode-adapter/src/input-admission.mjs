@@ -90,6 +90,7 @@ export class InputLedger {
 	 * @param {{ commandId: string, kind?: string, text: string, attachments?: any[], requestedDelivery?: string, followupMode?: string, busy?: boolean, clientId?: string, mode?: string, modelSelection?: any, modelSelectionExplicit?: boolean }} input
 	 */
 	begin(input) {
+		this.pruneTerminalEntries();
 		const commandId = input.commandId;
 		this.admissionSeq += 1;
 		const decision = decideAdmission(input);
@@ -298,6 +299,15 @@ export class InputLedger {
 	settleTurn() {
 		for (const entry of this.entries.values()) {
 			if (entry.state === "steered") entry.state = "attributed";
+		}
+		this.pruneTerminalEntries();
+	}
+
+	pruneTerminalEntries() {
+		// 台账只负责调度，聊天历史与 ACK 去重各有现成所有者。终态不再参与归属，
+		// 及时回收避免长会话每次排队/快照都扫描全部旧输入；未知 submitted 必须保留。
+		for (const [id, entry] of this.entries) {
+			if (["attributed", "failed", "cancelled"].includes(entry.state)) this.entries.delete(id);
 		}
 	}
 

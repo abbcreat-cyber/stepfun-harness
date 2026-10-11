@@ -152,7 +152,10 @@ export class StepStreamProjection {
           this.newRow({ kind: "assistantText", text: deferred, state: "failed" });
         }
         if (event.toolName === "clarify_user" && event.result?.details?.cancelled === true) row.status = "cancelled";
-        if (event.isError && !deferred) row.error = { code: "step_tool_error", message: row.output.text || "工具执行失败" };
+        // Step 原生 shell 把主动 abort 作为错误结果返回；结合本轮真实停止意图及精确回执，
+        // 只把这类工具标为取消，不能将停止前已发生的其他执行错误一起掩盖。
+        if (this.interruptedByUser && event.isError && ["powershell", "bash", "run_command"].includes(event.toolName) && row.output.text === "Command aborted") row.status = "cancelled";
+        if (event.isError && !deferred && row.status !== "cancelled") row.error = { code: "step_tool_error", message: row.output.text || "工具执行失败" };
       }
       this.emitRow(row);
     }

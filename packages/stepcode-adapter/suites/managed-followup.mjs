@@ -6,6 +6,8 @@ import { createManagedQueue } from "../src/bridge/managed-queue.mjs";
 import { createSessionLifecycle } from "../src/bridge/session-lifecycle.mjs";
 import { createProjection } from "../src/bridge/projection.mjs";
 import { mockClient } from "./helpers.mjs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 async function command(b, id, type, payload = {}) {
  b.send({ id, method: "v4/command", params: { commandId: `managed-${id}`, sessionId: "managed", type, payload } });
@@ -51,6 +53,25 @@ test("managed: queue_update 不丢 managed 消息，FIFO 执行一次", async ()
   await b.waitFor(() => snapshot(b)?.rows.window.filter(r => r.kind === "userInput").length === 3, { timeoutMs: 20000 });
   await b.waitFor(() => snapshot(b)?.control.canStop === false && snapshot(b)?.queue.items.length === 0, { timeoutMs: 20000 });
   assert.deepEqual(snapshot(b).rows.window.filter(r => r.kind === "userInput").map(r => r.text), ["原任务", "B", "C"]);
+ } finally { b.child.kill(); }
+});
+
+test("managed: 取消订阅后编辑/删除队列，磁盘保存最新状态", async () => {
+ const b = launchBridge([], { STEP_MOCK_DELAY_MS: "160" });
+ try {
+  await setup(b);
+  await command(b, 4, "sendText", { text: "删除项" });
+  await command(b, 5, "sendText", { text: "原文" });
+  await command(b, 6, "stop");
+  const subscriptionId = b.frames.find(f => f.id === 2).result.ack.subscriptionId;
+  b.send({ id: 20, method: "v4/conversation/unsubscribe", params: { subscriptionId, connectionId: "managed-connection" } });
+  await b.waitFor(f => f.id === 20);
+  await command(b, 7, "deleteQueueItem", { queueItemId: "qi_managed-4" });
+  await command(b, 8, "editQueueItem", { queueItemId: "qi_managed-5", newText: "后台修改保留" });
+  const saved = JSON.parse(await readFile(join(b.stateDir, "conversations", "managed.json"), "utf8"));
+  assert.deepEqual(saved.queueEntries.map(e => e.text), ["后台修改保留"]);
+  const recovered = new InputLedger(); recovered.restoreQueue(saved.queueEntries);
+  assert.deepEqual(recovered.queueItems().map(e => e.text), ["后台修改保留"]);
  } finally { b.child.kill(); }
 });
 
@@ -132,7 +153,7 @@ for (const order of ["start-before-ack", "start-after-ack", "delivered-before-ac
   const ctx = {ledger:new InputLedger(), primarySession:{sessionId:"boundary",modelSelection:{providerId:"mock",modelId:"mock-mini"}},
    turnBusy:true,currentTurnId:"old-run",conversationRows:[],v4Subscriptions:new Map(),streamingText:"",eventSeq:0,stateRevision:0,
    attachmentStore:{prepare: async (_id, _attachments, text) => ({ images: [], text: `${text}\n附件清单：排队费用.csv` })},ensureClient:async()=>{},hydrateStatistics:async()=>{},
-   sessionStatistics:()=>({handle:()=>false}),scheduleQueueDrain(){},notify(){},persistPrimarySummary(){},broadcastSessionsIndexUpsert(){},
+   sessionStatistics:()=>({handle:()=>false}),scheduleQueueDrain(){},runInputOperation:async fn=>fn(),notify(){},persistConversation(){},persistPrimarySummary(){},broadcastSessionsIndexUpsert(){},
   };
   Object.assign(ctx,createProjection(ctx));
   let forwarded;

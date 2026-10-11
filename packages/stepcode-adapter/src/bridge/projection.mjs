@@ -66,9 +66,10 @@ export function createProjection(ctx) {
 		// 在 ack 后限时等不到该 topic 的帧会 fail-closed（recoveryFrameTimedOut）。
 		const topic = targetTopic ?? `conversation/${ctx.primarySession.sessionId}`;
 		const subscriptionId = targetSubscriptionId ?? ctx.v4Subscriptions.get(topic);
-		if (!subscriptionId) return;
 		const isPrimary = ctx.primarySession && topic === `conversation/${ctx.primarySession.sessionId}`;
+		// 后台/断线只停止发帧，不停止保存；否则已接受的队列编辑与取消会在重启后丢失。
 		if (isPrimary) persistSnapshot();
+		if (!subscriptionId) return;
 		// 活动非只读会话的正文/统计/队列由内存owner提供；刚保存的JSON回读结果没有消费者。
 		// 冷历史及只读会话仍要读取磁盘，尤其保留其统计和队列恢复来源。
 		const saved = isPrimary && !ctx.primarySession.readOnly ? null : ctx.readConversation(topic.slice("conversation/".length));

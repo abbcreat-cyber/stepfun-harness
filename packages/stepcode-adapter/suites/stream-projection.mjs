@@ -48,12 +48,30 @@ test("stream: abort preserves partial text and marks interruption", () => {
   assert.equal(projection.outcome, "completedInterrupted");
 });
 
+test("stream: 主动停止的原生 shell 回执显示取消，真实错误及成功结果不被改写", () => {
+  for (const [toolName, interrupted, isError, text, expected] of [
+    ["powershell", true, true, "Command aborted", "cancelled"],
+    ["bash", true, true, "Command aborted", "cancelled"],
+    ["powershell", false, true, "Command aborted", "error"],
+    ["powershell", true, true, "Access denied", "error"],
+    ["powershell", true, false, "Command aborted", "success"],
+    ["read_file", true, true, "Command aborted", "error"],
+  ]) {
+    const rows = [], projection = new StepStreamProjection(rows, "turn", "model");
+    projection.interruptedByUser = interrupted;
+    projection.handle({ type: "tool_execution_start", toolName, toolCallId: "tool", args: {} });
+    projection.handle({ type: "tool_execution_end", toolName, toolCallId: "tool", isError, result: { content: [{ type: "text", text }] } });
+    assert.equal(rows[0].status, expected);
+    assert.equal(Boolean(rows[0].error), expected === "error");
+  }
+});
+
 for (const [stopReason, outcome, resultType] of [["error", "failed", "error_during_execution"], ["aborted", "completedInterrupted", "cancelled"], ["stop", "completedSuccess", "success"]]) {
   test(`stream: legacy ${stopReason} terminal agrees with V4 outcome`, () => {
     const frames = [], ctx = {
       primarySession: { sessionId: "terminal", modelSelection: { providerId: "unknown-provider", modelId: "unknown-model" } },
       conversationRows: [], ledger: new InputLedger(), sessionStatistics: () => ({ handle: () => false }),
-      v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
+      v4Subscriptions: new Map(), workflowBridge: {}, persistConversation() {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
       notify: (method, payload) => frames.push({ method, payload }), streamingText: "", eventSeq: 0, stateRevision: 0,
     };
     ctx.ledger.begin({ commandId: "terminal-input", text: "fixture", busy: false });
@@ -73,7 +91,7 @@ test("stream: process failure settles only the current live turn, keeps pending 
   const frames = [], ctx = {
     primarySession: { sessionId: "exit", modelSelection: { providerId: "fixture", modelId: "model" } },
     conversationRows: [], ledger: new InputLedger(), sessionStatistics: () => ({ handle: () => false }),
-    v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
+    v4Subscriptions: new Map(), workflowBridge: {}, persistConversation() {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
     notify: (method, payload) => frames.push({ method, payload }), streamingText: "", eventSeq: 0, stateRevision: 0,
   };
   const projection = createProjection(ctx);
@@ -100,7 +118,7 @@ for (const finalReason of ["stop", "error", "aborted"]) test(`stream: repeated n
   const frames = [], ctx = {
     primarySession: { sessionId: "retry", modelSelection: { providerId: "fixture", modelId: "model" } },
     conversationRows: [], ledger: new InputLedger(), sessionStatistics: () => ({ handle: () => false }),
-    v4Subscriptions: new Map(), workflowBridge: {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
+    v4Subscriptions: new Map(), workflowBridge: {}, persistConversation() {}, persistPrimarySummary() {}, broadcastSessionsIndexUpsert() {}, scheduleQueueDrain() {}, runInputOperation: async fn => fn(),
     notify: (method, payload) => frames.push({ method, payload }), streamingText: "", eventSeq: 0, stateRevision: 0,
   };
   ctx.ledger.begin({ commandId: "original-input", text: "retry safely", busy: false }); ctx.ledger.markSubmitted("original-input");

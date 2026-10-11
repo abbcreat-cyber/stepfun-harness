@@ -275,6 +275,8 @@ test("native autonomous continuation keeps Host provenance until the next manual
     sessionStatistics: () => ({ handle: () => false }),
     workflowBridge: {},
     notify() {},
+    persistConversation() {},
+    runInputOperation: async fn => fn(),
     persistPrimarySummary() {},
     broadcastSessionsIndexUpsert() {},
     scheduleQueueDrain() {},
