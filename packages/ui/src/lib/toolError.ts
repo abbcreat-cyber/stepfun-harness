@@ -58,18 +58,25 @@ export function getToolCallErrorText(
   if (directError) {
     return directError;
   }
+  // 失败终态或明确 error 才是错误依据；成功正文里的 message 或标签可能只是文档内容。
+  const failed = toolCall.status === "failed";
 
   if (isRecord(toolCall.output)) {
-    const outputError = readFirstStringField(toolCall.output, ["error", "message"]);
+    const outputError = readFirstStringField(
+      toolCall.output,
+      failed ? ["error", "message", "text", "content"] : ["error"],
+    );
     if (outputError) {
-      return outputError;
+      return failed ? normalizeWrappedErrorText(outputError) : outputError;
     }
   }
 
-  const taggedOutputError = readTaggedToolErrorText(toolCall.output);
+  const taggedOutputError = failed ? readTaggedToolErrorText(toolCall.output) : undefined;
   if (taggedOutputError) {
     return taggedOutputError;
   }
+  if (failed && typeof toolCall.output === "string" && toolCall.output.trim())
+    return normalizeWrappedErrorText(toolCall.output);
 
   if (!isRecord(toolCall.raw)) {
     return undefined;
@@ -77,19 +84,21 @@ export function getToolCallErrorText(
 
   const rawOutput = isRecord(toolCall.raw.rawOutput) ? toolCall.raw.rawOutput : null;
   const rawOutputError = rawOutput
-    ? readFirstStringField(rawOutput, ["error", "message"])
+    ? readFirstStringField(rawOutput, failed ? ["error", "message", "text", "content"] : ["error"])
     : undefined;
   if (rawOutputError) {
-    return rawOutputError;
+    return failed ? normalizeWrappedErrorText(rawOutputError) : rawOutputError;
   }
 
-  const rawStatus = readNonEmptyString(toolCall.raw.status);
-  const taggedRawOutputError = readTaggedToolErrorText(toolCall.raw.rawOutput);
+  const taggedRawOutputError = failed ? readTaggedToolErrorText(toolCall.raw.rawOutput) : undefined;
   if (taggedRawOutputError) {
     return taggedRawOutputError;
   }
 
-  if (toolCall.status === "failed" || rawStatus === "failed") {
+  if (failed && typeof toolCall.raw.rawOutput === "string" && toolCall.raw.rawOutput.trim())
+    return normalizeWrappedErrorText(toolCall.raw.rawOutput);
+
+  if (failed) {
     const contentBlocks = Array.isArray(toolCall.raw.content) ? toolCall.raw.content : [];
     for (const block of contentBlocks) {
       if (!isRecord(block)) {

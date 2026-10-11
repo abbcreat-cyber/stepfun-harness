@@ -3,6 +3,7 @@ import type { BundledLanguage } from "shiki";
 import { getMediaPreviewFormat, type MediaPreviewKind } from "@zcode/shared";
 import type { TaskChatToolCall as ChatToolCall } from "@/lib/taskChatMessageTypes.js";
 import type { CodeViewerWorkspaceScope } from "@/lib/codeViewerWorkspaceScope.js";
+import { getToolCallErrorText } from "@/lib/toolError.js";
 import {
   decodeFilePathUriEscapes,
   getPathLeaf,
@@ -210,15 +211,12 @@ function extractContentText(value: unknown): string | undefined {
     return value;
   }
 
-  return findStringField(value, [
-    "content",
-    "text",
-    "fileContent",
-    "contents",
-    "code",
-    "result",
-    "value",
-  ]);
+  // 空文件、纯空白都是已读取的内容；只把非字符串视为缺席。
+  if (!isRecord(value)) return undefined;
+  for (const key of ["content", "text", "fileContent", "contents", "code", "result", "value"]) {
+    if (typeof value[key] === "string") return value[key];
+  }
+  return undefined;
 }
 
 function extractRawPath(value: unknown): string | undefined {
@@ -461,6 +459,12 @@ export function getToolCallCodePreview(
   toolCall: ChatToolCall,
   workspacePath: string,
 ): CodeViewerSource | null {
+  if (
+    toolCall.status === "failed" ||
+    toolCall.status === "stopped" ||
+    getToolCallErrorText(toolCall)
+  )
+    return null;
   // 结构化 diff 是工具结果的显式变更事实，优先于 input/output 中的全文预览。
   const structuredDiff = extractStructuredDiff(toolCall.raw);
   const resolvedPath = resolveViewerPath(
@@ -494,7 +498,10 @@ export function getToolCallCodePreview(
     };
   }
 
-  const explicitPatch = extractDiffText(toolCall.output) ?? extractDiffText(toolCall.input);
+  // 读到补丁文件时展示其原文，不能把正文的 ---/@@ 当作工具产生的修改。
+  const explicitPatch = isReadTool
+    ? undefined
+    : (extractDiffText(toolCall.output) ?? extractDiffText(toolCall.input));
   if (explicitPatch) {
     return {
       type: "patch",
@@ -528,13 +535,28 @@ export function getToolCallCodePreview(
     }
   }
 
+  if (
+    isReadTool &&
+    toolCall.status === "completed" &&
+    resolvedPath &&
+    isImagePreviewPath(resolvedPath) &&
+    inferImageMediaType(resolvedPath) !== "image/svg+xml"
+  ) {
+    return {
+      type: "image",
+      title: viewerTitle,
+      path: resolvedPath,
+      mediaType: inferImageMediaType(resolvedPath)!,
+    };
+  }
+
   const preferredContent = isReadTool
     ? (extractContentText(toolCall.output) ?? extractContentText(toolCall.input))
     : isWriteTool
       ? (extractContentText(toolCall.input) ?? extractContentText(toolCall.output))
       : (extractContentText(toolCall.output) ?? extractContentText(toolCall.input));
 
-  if (preferredContent) {
+  if (preferredContent !== undefined) {
     return buildTextPreview(viewerTitle, resolvedPath, preferredContent);
   }
 
@@ -566,6 +588,12 @@ export function getToolCallCodeContentPreview(
   toolCall: ChatToolCall,
   workspacePath: string,
 ): TextCodeViewerSource | null {
+  if (
+    toolCall.status === "failed" ||
+    toolCall.status === "stopped" ||
+    getToolCallErrorText(toolCall)
+  )
+    return null;
   const structuredDiff = extractStructuredDiff(toolCall.raw);
   const resolvedPath = resolveViewerPath(
     structuredDiff?.path ?? extractRawPath(toolCall.input) ?? extractRawPath(toolCall.output),
@@ -576,6 +604,14 @@ export function getToolCallCodeContentPreview(
   const isDiffTool = isFileDiffToolCall(toolCall, identity);
   const isReadTool = identity.family === "file-read";
   const isWriteTool = isFileContentWriteToolCall(toolCall, identity);
+
+  if (
+    isReadTool &&
+    toolCall.status === "completed" &&
+    isImagePreviewPath(resolvedPath) &&
+    inferImageMediaType(resolvedPath) !== "image/svg+xml"
+  )
+    return null;
 
   if (structuredDiff) {
     return buildTextPreview(viewerTitle, resolvedPath, structuredDiff.newText);
@@ -594,7 +630,7 @@ export function getToolCallCodeContentPreview(
       ? (extractContentText(toolCall.input) ?? extractContentText(toolCall.output))
       : (extractContentText(toolCall.output) ?? extractContentText(toolCall.input));
 
-  if (!preferredContent) {
+  if (preferredContent === undefined) {
     return null;
   }
 

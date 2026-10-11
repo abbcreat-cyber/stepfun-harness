@@ -9,6 +9,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { ToolLayout } from "../ToolLayout.js";
 import { ToolSnapshotFieldNotice } from "@/ToolCallBlocks/ToolSnapshotFieldNotice.js";
 import type { ToolCallBlockRenderContext } from "../shared.js";
+import { getToolExecutionPhase } from "@/lib/executeGroupActivity.js";
 import { renderFilePath } from "../shared.js";
 
 const READ_TOOL_ICON = <SearchIcon className="size-4 shrink-0 text-foreground-subtle" />;
@@ -253,8 +254,10 @@ export function ReadFileChip({
 
 export function ReadToolCallBlock(context: ToolCallBlockRenderContext) {
   const { intl } = useZCodeIntl();
-  const { toolCallNode, isRunning, statusLabel, errorText, onOpenCodeViewer } = context;
+  const { toolCallNode, statusLabel, errorText, onOpenCodeViewer } = context;
   const { toolCall } = toolCallNode;
+  const phase = getToolExecutionPhase(toolCall);
+  const isRunning = context.isRunning && phase === "running";
   const summary = buildReadSummary(toolCall);
   const canOpenPreview = summary?.entryType === "file" && Boolean(onOpenCodeViewer);
   const openFilePreview = useCallback(() => {
@@ -286,7 +289,14 @@ export function ReadToolCallBlock(context: ToolCallBlockRenderContext) {
         showIcon={context.showIcon !== false}
         canToggle={false}
         kindLabel={intl.formatMessage({
-          id: isRunning ? "chat.toolCall.read.reading" : "chat.toolCall.kind.read",
+          id:
+            phase === "awaitingApproval"
+              ? "chat.permission.awaitingApproval"
+              : phase === "pending"
+                ? "chat.toolCall.status.pending"
+                : isRunning
+                  ? "chat.toolCall.read.reading"
+                  : "chat.toolCall.kind.read",
         })}
         sourceLabel={context.sourceLabel}
         primaryText={primaryText}
@@ -295,6 +305,7 @@ export function ReadToolCallBlock(context: ToolCallBlockRenderContext) {
         statusLabel={statusLabel}
         statusTooltip={toolCall.status === "failed" ? errorText : undefined}
         showFailureStatus={toolCall.status === "failed"}
+        showStatusLabel={toolCall.status === "stopped"}
         isRunning={isRunning}
         title={toolCall.title}
         content={null}
