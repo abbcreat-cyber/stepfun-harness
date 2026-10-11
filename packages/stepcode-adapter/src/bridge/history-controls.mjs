@@ -44,8 +44,13 @@ export function createHistoryControls(ctx) {
       const files = checkpointsFor(branch, user.id).filter(f => !f.calls[0].ignored && f.calls[0].before?.hash !== f.calls.at(-1).after);
       if (files.length && header.fileChanges?.state !== "reverted" && !(row.rowId <= ctx.primarySession.inheritedRowMax)) {
         const changes = checkpointChanges(files);
-        header.fileChanges = { files: changes.files, additions: changes.additions, deletions: changes.deletions, state: "active" };
-        header.actions = { ...header.actions, canRewindFiles: true };
+        // 工具中断的 before-only 快照不能生成 0 文件摘要或留下可点击的撤销入口。
+        if (changes.files) {
+          header.fileChanges = { files: changes.files, additions: changes.additions, deletions: changes.deletions, state: "active" };
+          header.actions = { ...header.actions, canRewindFiles: true };
+        } else { delete header.fileChanges; delete header.actions?.canRewindFiles; }
+      } else if (header.fileChanges?.state !== "reverted") {
+        delete header.fileChanges; delete header.actions?.canRewindFiles;
       }
     }
     const assistant = ctx.conversationRows.findLast(r => r.kind === "assistantText" && r.turnId === row.turnId);

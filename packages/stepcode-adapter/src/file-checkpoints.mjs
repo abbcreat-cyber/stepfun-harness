@@ -3,6 +3,7 @@ import { lstat, readFile, writeFile, unlink, mkdir, rename, realpath } from "nod
 import { resolve, dirname, parse } from "node:path";
 import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
+import { checkpointDiff } from "./checkpoint-diff.mjs";
 
 export const CHECKPOINT = "desktop-file-checkpoint-v1";
 export const hashBytes = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -117,6 +118,8 @@ export async function checkpointPreview(files) {
     let reason, currentHash;
     if (calls.some(c => !c.before || c.after === undefined)) reason = "checkpoint_missing";
     else if (calls.some((c, i) => c.error || c.overlap || (i && calls[i - 1].after !== c.before.hash))) reason = "unsupported_checkpoint";
+    // 完整连续但净变化为零的文件不属于恢复目标；不能让后续外部编辑阻塞其他文件。
+    else if (first.before.hash === last.after) continue;
     else {
       try { currentHash = (await readImage(file.path, { includeData: false })).hash; if (currentHash !== last.after) reason = "external_modified"; }
       catch { reason = "file_read_failed"; }
@@ -129,19 +132,11 @@ export async function checkpointPreview(files) {
 }
 
 export function checkpointChanges(files) {
-  const lines = data => data == null || data === "" ? [] : Buffer.from(data, "base64").toString("utf8").replace(/\n$/, "").split("\n");
   const complete = image => image && (typeof image.data === "string" || (image.data === null && image.hash === "missing"));
   // 未完成/读取失败的快照不是空文件；只能在撤销预览中报告未知，不能虚构整文件删除。
   const items = files.filter(f => !f.calls[0].ignored && complete(f.calls[0].before) && complete(f.calls.at(-1).afterImage) && f.calls[0].before.hash !== f.calls.at(-1).after).map(file => {
-    const before = lines(file.calls[0].before?.data), after = lines(file.calls.at(-1).afterImage?.data);
-    let start = 0, end = 0;
-    while (start < before.length && start < after.length && before[start] === after[start]) start++;
-    while (end < before.length - start && end < after.length - start && before.at(-end - 1) === after.at(-end - 1)) end++;
-    const removed = before.slice(start, before.length - end), added = after.slice(start, after.length - end);
-    return { path: file.path, additions: added.length, deletions: removed.length, writeCount: file.calls.length,
-      toolNames: [...new Set(file.calls.map(c => c.toolName))],
-      patches: file.calls[0].before && file.calls.at(-1).afterImage ? [{ oldStart: start + 1, oldLines: removed.length, newStart: start + 1, newLines: added.length,
-        lines: [...removed.map(line => "-" + line), ...added.map(line => "+" + line)] }] : [] };
+    return { path: file.path, ...checkpointDiff(file.calls[0].before.data, file.calls.at(-1).afterImage.data), writeCount: file.calls.length,
+      toolNames: [...new Set(file.calls.map(c => c.toolName))] };
   });
   return { files: items.length, additions: items.reduce((n, f) => n + f.additions, 0), deletions: items.reduce((n, f) => n + f.deletions, 0), items };
 }
