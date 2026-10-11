@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { visibleAssistantText } from "../assistant-text.mjs";
 import { expandWorkflowCommand } from "../workflow/catalog.mjs";
 import { makeSessionSummary } from "../wire-shapes.mjs";
+import { attachmentPathRemapper } from "./fork-attachment-paths.mjs";
 
 const textOf = message => typeof message?.content === "string" ? message.content : (message?.content ?? []).filter(p => p.type === "text").map(p => p.text).join("\n");
 
@@ -59,9 +60,14 @@ async function copyAttachments(ctx, parentId, childId, rows) {
     await mkdir(dir, { recursive: true });
     await cp(source.path, join(dir, `${source.id}.bin`));
     await cp(join(parentDir, `${source.id}.json`), join(dir, `${source.id}.json`));
-    // 文档在原生 user 正文里引用已物化文件；重新物化并仅重写这一段已知附件路径。
-    const prepared = await ctx.attachmentStore.prepare(childId, [attachment]);
-    for (const file of prepared.files) replacements.push([join(parentDir, file.path.slice(dir.length + 1)), file.path]);
+    // 原始上传用于预览，工作副本可能已被工具编辑；分叉必须复制当前副本而非恢复原文。
+    const prepared = await ctx.attachmentStore.prepare(childId, [attachment], "", { materialize: false, includeImages: false });
+    for (const file of prepared.files) {
+      const parentPath = join(parentDir, file.path.slice(dir.length + 1));
+      replacements.push([parentPath, file.path]);
+      try { await copyFile(parentPath, file.path); }
+      catch (error) { if (error.code !== "ENOENT") throw error; } // 已删除的副本不能被分叉复活。
+    }
   }
   return replacements;
 }
@@ -75,7 +81,7 @@ export async function forkAssistant(ctx, row, envelope, branch) {
   const parent = ctx.primarySession, parentFile = parent.stepSessionFile;
   if (!parentFile || parent.readOnly) throw new Error("当前会话无法分叉");
   const childId = `step-session_${randomUUID()}`, file = ctx.conversationFile(childId);
-  const childRows = structuredClone(ctx.conversationRows.slice(0, ctx.conversationRows.indexOf(row) + 1));
+  let childRows = structuredClone(ctx.conversationRows.slice(0, ctx.conversationRows.indexOf(row) + 1));
   for (const item of childRows) {
     if (item.actions) { delete item.actions.canEdit; delete item.actions.canRetry; delete item.actions.canRewindFiles; }
     // 分叉只复制对话；历史文件操作不应变成子会话可以执行的撤销操作。
@@ -102,13 +108,11 @@ export async function forkAssistant(ctx, row, envelope, branch) {
       if (failure) throw failure;
     });
     if (replacements.length) {
+      const remap = attachmentPathRemapper(replacements);
+      childRows = remap(childRows);
       const lines = (await readFile(childFile, "utf8")).trimEnd().split("\n").map(line => {
-        const entry = JSON.parse(line);
-        if (entry.message?.role === "user") for (const part of Array.isArray(entry.message.content) ? entry.message.content : []) {
-          if (part.type !== "text" || !part.text.includes("用户附带的文件")) continue;
-          for (const [from, to] of replacements) part.text = part.text.replaceAll(JSON.stringify(from).slice(1, -1), JSON.stringify(to).slice(1, -1));
-        }
-        return JSON.stringify(entry);
+        // 只改 user 清单会让历史 toolCall/toolResult 仍指向父目录，续聊可能误改父附件。
+        return JSON.stringify(remap(JSON.parse(line)));
       });
       await writeFile(childFile, lines.join("\n") + "\n");
     }
