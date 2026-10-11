@@ -128,12 +128,26 @@ export class StepStreamProjection {
         row = this.newRow({ kind: "toolCall", toolCallId: id, toolName: presentationToolName(event.toolName) ?? "tool", inputText: JSON.stringify(event.args ?? {}), status: "running" });
         this.tools.set(id, row);
       }
-      if (event.args !== undefined) { row.input = presentationToolInput(event.toolName, event.args); row.inputText = JSON.stringify(row.input); }
+      let inputChanged = false;
+      if (event.args !== undefined) {
+        const input = presentationToolInput(event.toolName, event.args), inputText = JSON.stringify(input);
+        inputChanged = row.input === undefined || inputText !== row.inputText;
+        if (inputChanged) { row.input = input; row.inputText = inputText; }
+      }
       if (event.type === "tool_execution_start") row.status = "running";
       // 工具状态由工具行展示，不能伪造 assistant 进度或反复覆盖较早的消息。
       if (event.type === "tool_execution_update") {
-        row.output = { text: resultText(event.partialResult) };
+        const text = resultText(event.partialResult), previous = row.output?.text;
+        // 原生 update 带累计输出，不能每次复制并发送整段前缀。现有协议支持 output.text 追加；
+        // 首段、参数/状态变化及截断尾窗替换仍用完整行，终态始终完整收口。
+        const appendOnly = !inputChanged && row.status === "running" && typeof previous === "string" && Object.keys(row.output).length === 1 && text.startsWith(previous);
+        row.output = { text };
         row.status = "running";
+        if (appendOnly) {
+          const append = text.slice(previous.length);
+          if (append) this.deltas.push({ op: "row.delta", rowId: row.rowId, path: "output.text", append });
+          return this.deltas;
+        }
       }
       if (event.type === "tool_execution_end") {
         delete row.interactionId;
