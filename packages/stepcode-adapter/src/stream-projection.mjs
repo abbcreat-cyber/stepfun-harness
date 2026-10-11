@@ -70,7 +70,8 @@ export class StepStreamProjection {
       row.toolCallId = part?.id ?? row.toolCallId;
       row.toolName = presentationToolName(part?.name) ?? row.toolName;
       if (part?.arguments !== undefined) { row.input = presentationToolInput(part?.name, part.arguments); row.inputText = JSON.stringify(row.input); }
-      if (row.status === "inputStreaming") row.status = interrupted ? "cancelled" : "running";
+      // 参数完成只代表待调度；同批后续工具可能还在等前一条审批，执行开始由原生事件确认。
+      if (row.status === "inputStreaming" && interrupted) row.status = "cancelled";
       this.tools.set(row.toolCallId, row);
     } else {
       const text = row.kind === "reasoning" ? part?.thinking : part?.text;

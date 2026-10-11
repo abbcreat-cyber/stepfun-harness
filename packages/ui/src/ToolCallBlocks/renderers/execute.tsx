@@ -9,6 +9,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { ToolSnapshotFieldNotice } from "@/ToolCallBlocks/ToolSnapshotFieldNotice.js";
 import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
 import { ScrollFadeViewport } from "@/components/ui/scroll-fade-viewport.js";
+import { getToolExecutionPhase } from "@/lib/executeGroupActivity.js";
 import { ToolLayout } from "../ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "../shared.js";
 
@@ -270,11 +271,19 @@ function extractExecuteResultText(output: unknown): string | null {
 
 export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
   const { intl } = useZCodeIntl();
-  const { toolCallNode, statusLabel, errorText, isOfficeMode = false, isPermissionPreview = false } = context;
+  const {
+    toolCallNode,
+    statusLabel,
+    errorText,
+    isOfficeMode = false,
+    isPermissionPreview = false,
+  } = context;
   const { toolCall } = toolCallNode;
   // 旧通用 pending 会被视为 running；原生审批有明确状态，不能显示正在执行。
-  const awaitingApproval = isPermissionPreview || (isPlainRecord(toolCall.raw) && toolCall.raw.v4Status === "pendingApproval");
-  const isRunning = context.isRunning && !awaitingApproval;
+  const phase = getToolExecutionPhase(toolCall);
+  const awaitingApproval = isPermissionPreview || phase === "awaitingApproval";
+  const awaitingExecution = phase === "pending";
+  const isRunning = context.isRunning && !awaitingApproval && !awaitingExecution;
   const prompt = resolveToolCallIdentity(toolCall).toolName === "PowerShell" ? "PS>" : "$";
   const secondaryText = getExecuteSecondaryText(toolCall.input);
   const contentParts = getExecuteContentParts(toolCall.input);
@@ -308,7 +317,11 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
           <div className="flex items-start gap-2 font-mono text-ui-base text-foreground">
             <span className="shrink-0 text-foreground-subtle">{prompt}</span>
             {/* 审批和执行共用完整命令；原先 truncate + 60px 上限会让长脚本不可读。 */}
-            <ScrollFadeViewport className="min-w-0 flex-1 max-h-60 overflow-auto scrollbar-hide" tabIndex={0} data-testid="execute-command-scroll">
+            <ScrollFadeViewport
+              className="min-w-0 flex-1 max-h-60 overflow-auto scrollbar-hide"
+              tabIndex={0}
+              data-testid="execute-command-scroll"
+            >
               <pre data-testid="execute-command" className="whitespace-pre-wrap break-words">
                 {contentParts.executionCommand}
               </pre>
@@ -322,7 +335,9 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
             running={isRunning}
           />
         ) : (
-          !isRunning && !awaitingApproval && (
+          !isRunning &&
+          !awaitingApproval &&
+          !awaitingExecution && (
             <div className="space-y-1">
               <p className="font-mono text-ui-base text-foreground-subtle">
                 {intl.formatMessage({
@@ -334,7 +349,17 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
         )}
       </div>
     ),
-    [contentParts.executionCommand, failureVisibleText, intl, isRunning, awaitingApproval, prompt, resultText, outputPreview],
+    [
+      contentParts.executionCommand,
+      failureVisibleText,
+      intl,
+      isRunning,
+      awaitingApproval,
+      awaitingExecution,
+      prompt,
+      resultText,
+      outputPreview,
+    ],
   );
 
   return (
@@ -347,16 +372,20 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
         forceOpen={!isOfficeMode && (context.forceOpen ?? false)}
         hideSecondaryTextWhenOpen
         kindLabel={
-          awaitingApproval ? intl.formatMessage({ id: "chat.permission.awaitingApproval" }) : (isOfficeMode
-            ? intl.formatMessage({
-                id: isRunning
-                  ? "chat.toolCall.execute.running"
-                  : "chat.toolCall.execute.conciseCompleted",
-              })
-            : context.kindLabelOverride) ??
-          intl.formatMessage({
-            id: isRunning ? "chat.toolCall.execute.running" : "chat.toolCall.kind.terminal",
-          })
+          awaitingApproval
+            ? intl.formatMessage({ id: "chat.permission.awaitingApproval" })
+            : awaitingExecution
+              ? intl.formatMessage({ id: "chat.toolCall.status.pending" })
+              : ((isOfficeMode
+                  ? intl.formatMessage({
+                      id: isRunning
+                        ? "chat.toolCall.execute.running"
+                        : "chat.toolCall.execute.conciseCompleted",
+                    })
+                  : context.kindLabelOverride) ??
+                intl.formatMessage({
+                  id: isRunning ? "chat.toolCall.execute.running" : "chat.toolCall.kind.terminal",
+                }))
         }
         sourceLabel={context.sourceLabel}
         primaryText={

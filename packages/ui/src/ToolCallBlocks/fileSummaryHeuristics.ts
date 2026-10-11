@@ -1,7 +1,7 @@
 import { computeLineChangeStat } from "@zcode/shared";
 import { resolveFileDisplayDescriptor } from "@/lib/fileDisplay.js";
 import { getPathLeaf } from "@/lib/path.js";
-import { buildUnifiedDiff } from "@/lib/toolDiffPreview.js";
+import { buildUnifiedDiff, extractBeforeAfter } from "@/lib/toolDiffPreview.js";
 import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
 import {
   type EditKindSource,
@@ -231,26 +231,10 @@ function readToolCallBeforeAfterCandidate(
       continue;
     }
 
-    const oldText = readStringField(value, [
-      "oldText",
-      "old_string",
-      "oldString",
-      "before",
-      "old_content",
-      "oldContent",
-    ]);
-    const newText = readStringField(value, [
-      "newText",
-      "new_string",
-      "newString",
-      "after",
-      "new_content",
-      "newContent",
-      "content",
-    ]);
-    if (oldText !== undefined && newText !== undefined) {
-      return { oldText, newText };
-    }
+    // 和代码查看器共享原生 search/replace 及旧参数规则，避免审批与详情显示不一致。
+    const pair =
+      extractBeforeAfter(value) ?? extractBeforeAfter({ ...value, after: value.content });
+    if (pair) return { oldText: pair.before, newText: pair.after };
   }
 
   return null;
@@ -371,6 +355,10 @@ export function inferEditOperation(
   }
 
   if (source) {
+    // Step 的 snake_case 工具名无法命中旧英文单词边界；按工具契约识别，不能猜标题。
+    const toolName = resolveToolCallIdentity(source).toolName;
+    if (toolName === "edit_file") return "edit";
+    if (toolName === "write_file") return "write";
     for (const candidate of readEditOperationCandidatesByPhase(source)) {
       const inferred = inferEditOperationFromText(candidate);
       if (inferred) {

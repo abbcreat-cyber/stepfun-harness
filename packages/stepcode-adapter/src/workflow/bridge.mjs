@@ -41,10 +41,12 @@ export function createWorkflowBridge(options) {
       const nativePreview = callId && row?.input !== undefined
         ? { toolName: row.toolName, input: row.input, reason: request.message }
         : request.message;
+      const resumeStatus = row?.status === "running" ? "running" : "inputStreaming";
       if (callId && row) { row.status = "pendingApproval"; row.interactionId = interactionId; }
       const settleRow = approved => {
         if (!callId || row?.interactionId !== interactionId) return;
-        row.status = approved ? "running" : "cancelled";
+        // 原生会先批量预审批；批准不等于已经执行，恢复审批前状态并等待实际执行事件。
+        if (row.status === "pendingApproval") row.status = approved ? resumeStatus : "cancelled";
         delete row.interactionId;
       };
       const abort = () => {

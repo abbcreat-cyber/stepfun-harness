@@ -18,7 +18,8 @@ function findStringField(value: unknown, keys: readonly string[]): string | unde
 
   for (const key of keys) {
     const candidate = value[key];
-    if (typeof candidate === "string" && candidate.trim()) {
+    // 空串是删除/插入、空白是实际代码内容，不能当作参数缺失。
+    if (typeof candidate === "string") {
       return candidate;
     }
   }
@@ -31,8 +32,24 @@ export function extractBeforeAfter(value: unknown): { before: string; after: str
     return null;
   }
 
-  const before = findStringField(value, ["before", "old_string", "oldText", "oldContent"]);
-  const after = findStringField(value, ["after", "new_string", "newText", "newContent"]);
+  const before = findStringField(value, [
+    "before",
+    "old_string",
+    "oldString",
+    "oldText",
+    "oldContent",
+    "old_content",
+    "search",
+  ]);
+  const after = findStringField(value, [
+    "after",
+    "new_string",
+    "newString",
+    "newText",
+    "newContent",
+    "new_content",
+    "replace",
+  ]);
   if (before !== undefined && after !== undefined) {
     return { before, after };
   }

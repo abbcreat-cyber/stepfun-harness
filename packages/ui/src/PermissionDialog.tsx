@@ -316,7 +316,7 @@ function getPermissionBlockInteraction(blockKind: PermissionBlockKind): Permissi
     case "edit":
       return {
         canToggle: false,
-        forceOpen: false,
+        forceOpen: true,
       };
     case "mcp":
     case "skill":

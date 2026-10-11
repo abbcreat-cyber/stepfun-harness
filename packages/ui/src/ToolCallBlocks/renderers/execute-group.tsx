@@ -5,13 +5,11 @@ import { ToolCallBlock } from "@/ToolCallBlocks.js";
 import { ToolLayout } from "@/ToolCallBlocks/ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "@/ToolCallBlocks/shared.js";
 import { getExecuteSecondaryText } from "@/ToolCallBlocks/renderers/execute.js";
+import { getExecuteGroupActivity } from "@/lib/executeGroupActivity.js";
 
 const EXECUTE_GROUP_ICON = (
   <SquareTerminalIcon className="size-4 shrink-0 text-foreground-subtle" />
 );
-
-// V4 row 进入共享 renderer 前会把 inputStreaming/pendingApproval 统一适配为 pending。
-const ACTIVE_STATUSES = new Set(["pending", "in_progress"]);
 
 function formatCompletedSummary(
   intl: ReturnType<typeof useZCodeIntl>["intl"],
@@ -47,14 +45,20 @@ export function ExecuteGroupToolCallBlock(context: ToolCallBlockRenderContext) {
   const { intl } = useZCodeIntl();
   const { toolCallNode, isRunning, statusLabel, isOfficeMode = false } = context;
   const { toolCall, childToolCalls } = toolCallNode;
-  const latestActiveChild = childToolCalls.findLast((child) =>
-    ACTIVE_STATUSES.has(child.toolCall.status),
-  );
-  const latestChild = latestActiveChild ?? childToolCalls.at(-1);
+  const activity = getExecuteGroupActivity(childToolCalls, isRunning);
+  const active = activity.phase !== "complete";
+  const executing = activity.phase === "running";
+  const latestChild = activity.child;
   const latestCommand =
     !isOfficeMode && latestChild ? getExecuteSecondaryText(latestChild.toolCall.input) : undefined;
   const runningActionLabel = latestCommand
-    ? intl.formatMessage({ id: "chat.toolCall.execute.running" })
+    ? intl.formatMessage({
+        id: executing
+          ? "chat.toolCall.execute.running"
+          : activity.phase === "awaitingApproval"
+            ? "chat.permission.awaitingApproval"
+            : "chat.toolCall.status.pending",
+      })
     : undefined;
   const runningPrimaryText = useMemo(
     () =>
@@ -116,23 +120,23 @@ export function ExecuteGroupToolCallBlock(context: ToolCallBlockRenderContext) {
       expandedKindLabel={intl.formatMessage({
         id: "chat.toolCall.executeGroup.label",
       })}
-      primaryText={isRunning && runningActionLabel ? runningPrimaryText : completedSummary}
-      secondaryText={isRunning ? runningSecondaryText : undefined}
+      primaryText={active && runningActionLabel ? runningPrimaryText : completedSummary}
+      secondaryText={active ? runningSecondaryText : undefined}
       summaryContentSeparator="·"
       expandedPrimaryText={completedSummary}
       // ToolLayout 默认会在展开态沿用 secondaryText，导致命令数量后残留当前命令。
       // 父组展开后由子 tool summary 表达当前命令，因此这里必须显式清空。
       expandedSecondaryText={null}
-      animateSummaryContent={isRunning}
+      animateSummaryContent={executing}
       disableSummaryContentAnimation={context.disableSummaryContentAnimation}
       summaryContentKey={
-        isRunning && latestChild
+        active && latestChild
           ? `execute:${toolCall.toolId}:${latestChild.toolCall.toolId}:${runningActionLabel ?? "running"}:${latestCommand ?? "command"}`
           : `execute:${toolCall.toolId}:done:${completedSummary}`
       }
       statusLabel={statusLabel}
-      isRunning={isRunning}
-      title={isOfficeMode ? undefined : isRunning && latestCommand ? latestCommand : toolCall.title}
+      isRunning={executing}
+      title={isOfficeMode ? undefined : active && latestCommand ? latestCommand : toolCall.title}
       expandedTitle={toolCall.title}
       renderContent={renderContent}
     />

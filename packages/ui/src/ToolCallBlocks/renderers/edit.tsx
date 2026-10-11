@@ -18,6 +18,7 @@ import {
 } from "../shared.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { getToolExecutionPhase } from "@/lib/executeGroupActivity.js";
 
 const EDIT_TOOL_ICON = <PencilIcon className="size-4 shrink-0 text-foreground-subtle" />;
 
@@ -84,9 +85,10 @@ function buildEditInlinePreview(
 
 export function EditToolCallBlock(context: ToolCallBlockRenderContext) {
   const { intl } = useZCodeIntl();
-  const { toolCallNode, rawFileSummaries, isRunning, statusLabel, errorText, onOpenCodeViewer } =
-    context;
+  const { toolCallNode, rawFileSummaries, statusLabel, errorText, onOpenCodeViewer } = context;
   const { toolCall } = toolCallNode;
+  const phase = getToolExecutionPhase(toolCall);
+  const isRunning = context.isRunning && phase === "running";
   const hasMultipleFiles = rawFileSummaries.length > 1;
   const isFailed =
     toolCall.status === "failed" || isRawToolCallFailed(toolCall.raw) || Boolean(errorText);
@@ -316,9 +318,17 @@ export function EditToolCallBlock(context: ToolCallBlockRenderContext) {
         // edit 的 diff 预览挂在 content 里；单文件和子文件如果不可展开，
         // 用户只能看到摘要行，无法在消息流里直接查看变更。
         {...layoutConfig}
-        canToggle={!context.isOfficeMode && layoutConfig.canToggle}
-        forceOpen={!context.isOfficeMode && layoutConfig.forceOpen}
-        kindLabel={context.kindLabelOverride ?? kindLabel}
+        // 审批宿主要求完整展示待修改内容；聊天区未传覆盖值时沿用折叠偏好。
+        canToggle={!context.isOfficeMode && (context.canToggle ?? layoutConfig.canToggle)}
+        forceOpen={!context.isOfficeMode && (context.forceOpen ?? layoutConfig.forceOpen)}
+        kindLabel={
+          context.kindLabelOverride ??
+          (phase === "awaitingApproval"
+            ? intl.formatMessage({ id: "chat.permission.awaitingApproval" })
+            : phase === "pending"
+              ? intl.formatMessage({ id: "chat.toolCall.status.pending" })
+              : kindLabel)
+        }
         sourceLabel={context.sourceLabel}
         primaryText={primaryText}
         prioritizePrimaryText
