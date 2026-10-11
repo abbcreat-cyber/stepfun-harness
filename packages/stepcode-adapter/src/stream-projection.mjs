@@ -4,6 +4,7 @@ import { visibleAssistantText } from "./assistant-text.mjs";
 import { normalizeClarification } from "./desktop-questionnaire.mjs";
 import { openingDeferral } from "./assistant-opening-hook.mjs";
 import { nativeSearchResultDisplay } from "./search-result-status.mjs";
+import { nativeShellOutputDisplay } from "./native-shell-output.mjs";
 const presentationToolName = name => name === "clarify_user" ? "AskUserQuestion" : /(?:^|__)node_repl__js$/.test(name??"") ? "mcp__node_repl__js" : workflowToolName(name);
 function presentationToolInput(name, input) {
   if (name !== "clarify_user") return input;
@@ -139,6 +140,8 @@ export class StepStreamProjection {
         row.output = { text: resultText(event.result) };
         const searchDisplay = nativeSearchResultDisplay(event.toolName, event.result);
         if (searchDisplay) row.output.display = searchDisplay;
+        const shellDisplay = nativeShellOutputDisplay(event.toolName, event.result, row.output.text);
+        if (shellDisplay) row.output.display = shellDisplay;
         row.status = event.isError ? "error" : "success";
         const display = snippetDisplay(row.toolName, row.output.text);
         if (display) row.display = display;

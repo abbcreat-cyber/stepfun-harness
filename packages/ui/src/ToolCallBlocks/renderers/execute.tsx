@@ -3,6 +3,7 @@ import {
   executionOutputPreviewSchema,
 } from "@zcode/shared/zcode-protocol-v4";
 import { ExecuteOutput } from "@/ToolCallBlocks/renderers/ExecuteOutput.js";
+import { NativeShellOutputDetails } from "@/ToolCallBlocks/renderers/NativeShellOutputDetails.js";
 import { SquareTerminalIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -347,9 +348,12 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
             </div>
           )
         )}
+        <NativeShellOutputDetails display={outputDisplay} onOpen={context.onOpenCodeViewer} />
       </div>
     ),
     [
+      outputDisplay,
+      context.onOpenCodeViewer,
       contentParts.executionCommand,
       failureVisibleText,
       intl,

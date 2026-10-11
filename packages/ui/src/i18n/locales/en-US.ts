@@ -5721,6 +5721,8 @@ const enUS: Record<string, string> = {
   "chat.toolCall.search.searching": "Searching",
   "chat.toolCall.search.searched": "Searched",
   "chat.toolCall.search.results": "Search results",
+  "chat.toolCall.execute.truncated": "Command output is truncated",
+  "chat.toolCall.execute.fullOutput": "View full output",
   "chat.toolCall.search.copyResults": "Copy results",
   "chat.toolCall.search.partial": "Partial results",
   "chat.toolCall.search.timedOut": "Search timed out; results may be incomplete",

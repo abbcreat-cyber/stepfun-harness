@@ -5472,6 +5472,8 @@ const zhCN: Record<string, string> = {
   "chat.toolCall.search.searching": "正在搜索",
   "chat.toolCall.search.searched": "已搜索",
   "chat.toolCall.search.results": "搜索结果",
+  "chat.toolCall.execute.truncated": "命令输出已截短",
+  "chat.toolCall.execute.fullOutput": "查看完整输出",
   "chat.toolCall.search.copyResults": "复制结果",
   "chat.toolCall.search.partial": "仅部分结果",
   "chat.toolCall.search.timedOut": "搜索超时，结果可能不完整",
