@@ -6,10 +6,14 @@ export function acceptedPermissionMode(requested, previous = "build") {
 }
 /** 只识别 Step 原生的工具授权，不把 AskUserQuestion 等业务问题当权限放行。 */
 export function isNativeToolPermission(request) {
-  if (request.method !== "confirm") return false;
+  return nativeToolPermissionCallId(request) !== null;
+}
+
+export function nativeToolPermissionCallId(request) {
+  if (request.method !== "confirm") return null;
   const title = /^(?:Approve|Dangerous) [\w.-]+ \[([^\]]+)\]$/.exec(request.title ?? "");
   const call = /^Call: (\S+)\r?\n/.exec(request.message ?? "");
-  return Boolean(title && call && call[1].endsWith(title[1]));
+  return title && call && call[1].endsWith(title[1]) ? call[1] : null;
 }
 
 /*

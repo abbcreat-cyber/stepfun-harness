@@ -7,6 +7,8 @@ import { SquareTerminalIcon } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { ToolSnapshotFieldNotice } from "@/ToolCallBlocks/ToolSnapshotFieldNotice.js";
+import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
+import { ScrollFadeViewport } from "@/components/ui/scroll-fade-viewport.js";
 import { ToolLayout } from "../ToolLayout.js";
 import type { ToolCallBlockRenderContext } from "../shared.js";
 
@@ -71,7 +73,7 @@ export function getExecuteSecondaryText(input: unknown): string | undefined {
 
     const trimmed = candidate.trim();
     if (trimmed.length > 0) {
-      return trimmed;
+      return candidate;
     }
   }
 
@@ -90,7 +92,8 @@ function readFirstStringField(
 
     const trimmed = candidate.trim();
     if (trimmed.length > 0) {
-      return trimmed;
+      // 只用 trim 判断空值；终端对齐、代码缩进和末尾换行属于原始输出。
+      return candidate;
     }
   }
 
@@ -116,7 +119,7 @@ function getExecuteContentParts(input: unknown): {
     }
 
     return {
-      executionCommand: trimmed,
+      executionCommand: input,
     };
   }
 
@@ -232,7 +235,7 @@ function extractExecuteResultText(output: unknown): string | null {
       const contentText = content
         .map((item) => {
           if (typeof item === "string") {
-            return item.trim();
+            return item;
           }
 
           if (isPlainRecord(item)) {
@@ -267,8 +270,12 @@ function extractExecuteResultText(output: unknown): string | null {
 
 export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
   const { intl } = useZCodeIntl();
-  const { toolCallNode, isRunning, statusLabel, errorText, isOfficeMode = false } = context;
+  const { toolCallNode, statusLabel, errorText, isOfficeMode = false, isPermissionPreview = false } = context;
   const { toolCall } = toolCallNode;
+  // 旧通用 pending 会被视为 running；原生审批有明确状态，不能显示正在执行。
+  const awaitingApproval = isPermissionPreview || (isPlainRecord(toolCall.raw) && toolCall.raw.v4Status === "pendingApproval");
+  const isRunning = context.isRunning && !awaitingApproval;
+  const prompt = resolveToolCallIdentity(toolCall).toolName === "PowerShell" ? "PS>" : "$";
   const secondaryText = getExecuteSecondaryText(toolCall.input);
   const contentParts = getExecuteContentParts(toolCall.input);
   const outputText = extractExecuteResultText(toolCall.output);
@@ -298,11 +305,14 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
     () => (
       <div className="space-y-3 mb-2 rounded-xl border border-border bg-panel px-4 py-3">
         <div className="space-y-1">
-          <div className="flex items-start gap-2 font-sans text-ui-base text-foreground">
-            <span className="shrink-0 text-foreground-subtle">$</span>
-            <pre className="min-w-0 flex-1 block max-h-15 overflow-over truncate whitespace-pre-wrap break-words">
-              {contentParts.executionCommand}
-            </pre>
+          <div className="flex items-start gap-2 font-mono text-ui-base text-foreground">
+            <span className="shrink-0 text-foreground-subtle">{prompt}</span>
+            {/* 审批和执行共用完整命令；原先 truncate + 60px 上限会让长脚本不可读。 */}
+            <ScrollFadeViewport className="min-w-0 flex-1 max-h-60 overflow-auto scrollbar-hide" tabIndex={0} data-testid="execute-command-scroll">
+              <pre data-testid="execute-command" className="whitespace-pre-wrap break-words">
+                {contentParts.executionCommand}
+              </pre>
+            </ScrollFadeViewport>
           </div>
         </div>
 
@@ -312,7 +322,7 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
             running={isRunning}
           />
         ) : (
-          !isRunning && (
+          !isRunning && !awaitingApproval && (
             <div className="space-y-1">
               <p className="font-mono text-ui-base text-foreground-subtle">
                 {intl.formatMessage({
@@ -324,7 +334,7 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
         )}
       </div>
     ),
-    [contentParts.executionCommand, failureVisibleText, intl, isRunning, resultText, outputPreview],
+    [contentParts.executionCommand, failureVisibleText, intl, isRunning, awaitingApproval, prompt, resultText, outputPreview],
   );
 
   return (
@@ -337,7 +347,7 @@ export function ExecuteToolCallBlock(context: ToolCallBlockRenderContext) {
         forceOpen={!isOfficeMode && (context.forceOpen ?? false)}
         hideSecondaryTextWhenOpen
         kindLabel={
-          (isOfficeMode
+          awaitingApproval ? intl.formatMessage({ id: "chat.permission.awaitingApproval" }) : (isOfficeMode
             ? intl.formatMessage({
                 id: isRunning
                   ? "chat.toolCall.execute.running"

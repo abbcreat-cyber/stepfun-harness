@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { workflowToolName } from "./catalog.mjs";
 import { confirmWorkflow, discardFinishedConfirmations } from "./confirmation.mjs";
 import { WorkflowToolAdmission } from "./tool-admission.mjs";
-import { isNativeToolPermission, resolveNativePermissionAction } from "../permission-policy.mjs";
+import { isNativeToolPermission, nativeToolPermissionCallId, resolveNativePermissionAction } from "../permission-policy.mjs";
 import { askDesktopQuestionnaire } from "../questionnaire-interaction.mjs";
 export { installWorkflowPlugin } from "./plugin-install.mjs";
 
@@ -35,16 +35,30 @@ export function createWorkflowBridge(options) {
     if (request.method !== "confirm") return Promise.resolve({ cancelled: true });
     return new Promise((resolve) => {
       const interactionId = `step-permission-${randomUUID()}`;
-      const row = options.rows(sessionId).findLast((row) => row.kind === "toolCall");
+      // 同批工具可能已全部产生行；原生 Call ID 才能确定本次审批对象，不能猜最后一行。
+      const callId = nativeToolPermissionCallId(request);
+      const row = options.rows(sessionId).findLast((row) => row.kind === "toolCall" && (!callId || row.toolCallId === callId));
+      const nativePreview = callId && row?.input !== undefined
+        ? { toolName: row.toolName, input: row.input, reason: request.message }
+        : request.message;
+      if (callId && row) { row.status = "pendingApproval"; row.interactionId = interactionId; }
+      const settleRow = approved => {
+        if (!callId || row?.interactionId !== interactionId) return;
+        row.status = approved ? "running" : "cancelled";
+        delete row.interactionId;
+      };
       const abort = () => {
         pending.delete(interactionId);
+        settleRow(false);
         resolve({ cancelled: true });
         options.changed(sessionId);
       };
       pending.set(interactionId, {
         sessionId,
+        nativePermission: Boolean(callId),
         resolve: (decision) => {
           signal?.removeEventListener("abort", abort);
+          settleRow(decision.approved);
           resolve({ confirmed: decision.approved });
         },
         item: {
@@ -54,10 +68,10 @@ export function createWorkflowBridge(options) {
           createdAt: Date.now(),
           payload: {
             kind: "permission",
-            toolCallId: request.id,
-            toolName: request.title || "Step 子任务",
+            toolCallId: callId ?? request.id,
+            toolName: callId && row?.toolName ? row.toolName : request.title || "Step 子任务",
             summary: request.title || "批准子任务操作",
-            detail: request.message,
+            detail: nativePreview,
             options: [
               { optionId: "allow", label: "允许一次", kind: "allowOnce" },
               { optionId: "deny", label: "拒绝", kind: "deny" },
@@ -343,7 +357,7 @@ export function createWorkflowBridge(options) {
       const row = options
         .rows(sessionId)
         .find((row) => row.toolCallId === request.item.payload.toolCallId);
-      if (row && !request.workflowConfirmation) {
+      if (row && !request.workflowConfirmation && !request.nativePermission) {
         row.status = approved ? "running" : "cancelled";
         delete row.interactionId;
       }

@@ -386,6 +386,7 @@ function buildPermissionBlockContext(
     // 权限弹窗等待用户确认时工具还没有执行，不能复用 running 状态。
     // 之前 Bash 权限会显示“执行中”并带 loading，遮住真正的申请原因。
     isRunning: false,
+    isPermissionPreview: true,
     statusLabel: "",
     childToolList: null,
     showIcon: true,

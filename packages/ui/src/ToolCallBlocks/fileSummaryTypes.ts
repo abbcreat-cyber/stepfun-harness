@@ -217,6 +217,8 @@ export interface ToolCallBlockRenderContext {
   viewerSource: CodeViewerSource | null;
   rawFileSummaries: RawToolCallFileSummary[];
   isRunning: boolean;
+  /** 审批阶段尚未执行，命令预览不能显示“无输出”等执行结果。 */
+  isPermissionPreview?: boolean;
   statusLabel: string;
   sourceLabel?: string;
   errorText?: string;
