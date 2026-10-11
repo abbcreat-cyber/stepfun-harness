@@ -16,11 +16,19 @@ import {
   toolCallResumeWorkflowRunDisplaySchema,
 } from "./workflow-observation-display.js";
 
+export const searchResultDisplaySchema = z.object({
+  kind: z.literal("search_result"),
+  returnedCount: z.number().int().nonnegative().optional(),
+  truncated: z.boolean(),
+  timedOut: z.boolean(),
+});
+
 // toolCall 终态 output 的结构化展示模型（port 自 feat；CUA 工具靠 kind:"cua" 分支把
 // errorCode/suggestedAction/media(screenshot) 等结构化内容带到 renderer）。consume-main 之前
 // 缺这个 union + toolOutputSchema.display 字段——协议层 zod 校验会把 agent 下发的 display 整个
 // strip 掉，导致 UI 永远拿不到 display?.kind==="cua"，CUA 工具调用退化成 fallback 渲染。
 const toolResultDisplaySchema = z.discriminatedUnion("kind", [
+  searchResultDisplaySchema,
   bashOutputDisplaySchema,
   z.object({
     kind: z.literal("file_diff"),

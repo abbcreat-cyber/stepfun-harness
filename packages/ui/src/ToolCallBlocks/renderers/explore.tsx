@@ -7,6 +7,7 @@ import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { getExecuteSecondaryText } from "@/ToolCallBlocks/renderers/execute.js";
 import { buildReadSummary, ReadFileChip } from "@/ToolCallBlocks/renderers/read.js";
 import { getSearchPrimaryText } from "@/ToolCallBlocks/renderers/search.js";
+import { getNativeSearchKind } from "@/lib/searchToolPresentation.js";
 import { renderFilePath } from "@/ToolCallBlocks/shared.js";
 import { resolveToolCallIdentity } from "@/lib/toolIdentity.js";
 import { ToolLayout } from "../ToolLayout.js";
@@ -160,6 +161,8 @@ function classifyExploreToolCall({
   title?: string;
   input: unknown;
 }): ExploreBucket {
+  const nativeKind = getNativeSearchKind(kind);
+  if (nativeKind) return nativeKind;
   const fingerprint = `${kind} ${title ?? ""}`.toLowerCase();
   const command = collectCommandStrings(input).join(" ; ").toLowerCase();
 
@@ -331,7 +334,11 @@ function getLatestExploreChildSummary(
   }
 
   if (childIdentity.family === "search") {
-    const primaryText = getSearchPrimaryText(intl, childToolCall.input);
+    const primaryText = getSearchPrimaryText(
+      intl,
+      childToolCall.input,
+      childToolCall.toolName ?? childToolCall.kind,
+    );
 
     return {
       animationKey: `search:${childToolCall.toolId}:${actionKindLabel ?? "plain"}:${primaryText}`,

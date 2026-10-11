@@ -6,6 +6,7 @@ import { readBuiltinHooks, FIRST_PRINCIPLES_REMINDER } from "../builtin-hooks.mj
 import { orderRuntimeNotices, withDesktopInputOrigin } from "../runtime-notice-context.mjs";
 import { registerFileCheckpoints } from "../file-checkpoints.mjs";
 import { nativePowerShellContract } from "../native-powershell.mjs";
+import { nativeSearchResultNotice } from "../search-result-status.mjs";
 
 /** 给模型真实产品工具边界，并在执行前阻止把常驻规则变成烧迭代的工作目标。 */
 export default function desktopTaskContracts(pi) {
@@ -20,6 +21,8 @@ export default function desktopTaskContracts(pi) {
     return { messages: orderRuntimeNotices(event.messages.filter(message => message.customType !== "desktop-selected-plugin" || message === latest)) };
   });
   pi.on("tool_result", event => {
+    const searchNotice = nativeSearchResultNotice(event);
+    if (searchNotice) return searchNotice;
     if (event.toolName !== "find_tools" || !pluginDiscoveryContext) return;
     // 工具索引不包含技能正文；保留真实搜索结果，同时提供本轮点选插件的能力入口。
     return { content: [...(event.content ?? []), { type: "text", text: pluginDiscoveryContext }] };

@@ -141,6 +141,8 @@ export const TID_PREVIEW_NEXT_BUTTON = "preview-next-button";
 export const TID_TOOL_CODE_VIEWER_BUTTON = "tool-code-viewer-button";
 /** 工具调用摘要行触发按钮（动态后缀为 toolId） */
 export const TID_TOOL_SUMMARY_TRIGGER = "tool-summary-trigger";
+/** 搜索工具展开后的原始结果及复制入口。 */
+export const TID_TOOL_SEARCH_RESULT = "tool-search-result";
 
 // Terminal
 /** 终端容器 */
@@ -467,7 +469,8 @@ export const TID_MODEL_PROVIDER_ADD_MODEL_BUTTON = "model-provider-add-model-but
 /** 侧栏左下角社区身份 chip（连接触发按钮） */
 export const TID_SIDEBAR_STEP_COMMUNITY_CHIP = "sidebar-step-community-chip";
 /** 侧栏社区菜单「更换/填入 API Key」项 */
-export const TID_SIDEBAR_STEP_COMMUNITY_MENU_REPLACE_KEY = "sidebar-step-community-menu-replace-key";
+export const TID_SIDEBAR_STEP_COMMUNITY_MENU_REPLACE_KEY =
+  "sidebar-step-community-menu-replace-key";
 /** 侧栏社区菜单「打开阶跃平台管理密钥」项 */
 export const TID_SIDEBAR_STEP_COMMUNITY_MENU_MANAGE_KEY = "sidebar-step-community-menu-manage-key";
 /** 侧栏社区菜单「填入 API Key」项（未连接态） */

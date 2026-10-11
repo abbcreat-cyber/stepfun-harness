@@ -3,6 +3,7 @@ import { snippetDisplay } from "./workflow/snippet-result.mjs";
 import { visibleAssistantText } from "./assistant-text.mjs";
 import { normalizeClarification } from "./desktop-questionnaire.mjs";
 import { openingDeferral } from "./assistant-opening-hook.mjs";
+import { nativeSearchResultDisplay } from "./search-result-status.mjs";
 const presentationToolName = name => name === "clarify_user" ? "AskUserQuestion" : /(?:^|__)node_repl__js$/.test(name??"") ? "mcp__node_repl__js" : workflowToolName(name);
 function presentationToolInput(name, input) {
   if (name !== "clarify_user") return input;
@@ -136,6 +137,8 @@ export class StepStreamProjection {
       if (event.type === "tool_execution_end") {
         delete row.interactionId;
         row.output = { text: resultText(event.result) };
+        const searchDisplay = nativeSearchResultDisplay(event.toolName, event.result);
+        if (searchDisplay) row.output.display = searchDisplay;
         row.status = event.isError ? "error" : "success";
         const display = snippetDisplay(row.toolName, row.output.text);
         if (display) row.display = display;
