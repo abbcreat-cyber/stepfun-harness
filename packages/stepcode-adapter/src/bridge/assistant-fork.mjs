@@ -29,7 +29,7 @@ export async function syncForkActions(ctx, branch) {
     const user = users[i]; let native = byId.get(user.entityId);
     if (!native) {
       let text = user.text;
-      try { if (user.attachments?.length) text = (await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, user.attachments, text)).text; }
+      try { if (user.attachments?.length) text = (await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, user.attachments, text, { materialize: false, includeImages: false })).text; }
       catch { continue; }
       text = expandWorkflowCommand(text);
       while (cursor >= 0 && nativeUsers[cursor].text !== text) cursor--;

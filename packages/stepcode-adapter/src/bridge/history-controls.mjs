@@ -31,7 +31,7 @@ export function createHistoryControls(ctx) {
     if (!row || !user) return;
     const content = user.message.content;
     const nativeText = typeof content === "string" ? content : content.filter(p => p.type === "text").map(p => p.text).join("");
-    const prepared = await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, row.attachments ?? [], row.text);
+    const prepared = await ctx.attachmentStore.prepare(ctx.primarySession.sessionId, row.attachments ?? [], row.text, { materialize: false, includeImages: false });
     // 相同文字也不能猜历史位置：只绑定当前原生分支的末条真实 user。
     if (nativeText !== expandWorkflowCommand(prepared.text)) return;
     for (const item of ctx.conversationRows) {
