@@ -330,7 +330,8 @@ function appendDiffBodyWithLcs(
     const skipAfterScore = lcs[beforeIndex]![afterIndex + 1] ?? -1;
     const skipBeforeScore = lcs[beforeIndex + 1]![afterIndex] ?? -1;
 
-    if (afterLine !== undefined && skipAfterScore >= skipBeforeScore) {
+    // 同分时先删除再新增，让替换遵循“旧内容 → 新内容”的常见阅读顺序。
+    if (afterLine !== undefined && skipAfterScore > skipBeforeScore) {
       patchLines.push(`+${afterLine}`);
       afterIndex += 1;
       continue;

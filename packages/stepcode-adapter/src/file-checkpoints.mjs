@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, readFile, writeFile, unlink, mkdir, rename } from "node:fs/promises";
+import { lstat, readFile, writeFile, unlink, mkdir, rename, realpath } from "node:fs/promises";
 import { resolve, dirname, parse } from "node:path";
 import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
@@ -66,7 +66,11 @@ export function registerFileCheckpoints(pi) {
     const record = { userId: user.id, toolCallId: event.toolCallId, toolName: event.toolName,
       path: ignored ? "(shell)" : resolve(ctx.cwd, rawPath || "."), ignored };
     if (!ignored) {
-      try { record.before = await readImage(record.path); }
+      try {
+        record.before = await readImage(record.path);
+        // 使用文件系统身份，不能按 Windows 平台直接 lowerCase 后合并大小写敏感文件。
+        if (record.before.hash !== "missing") record.path = await realpath(record.path);
+      }
       catch (e) { record.error = e.message; }
       if (event.input?.then_run) record.error = "unsupported_checkpoint: tool also ran a shell command";
       for (const other of pending.values()) if (process.platform === "win32" ? other.path.toLowerCase() === record.path.toLowerCase() : other.path === record.path) {
@@ -81,7 +85,11 @@ export function registerFileCheckpoints(pi) {
     if (!record) return;
     pending.delete(event.toolCallId);
     if (!record.ignored) {
-      try { record.afterImage = await readImage(record.path); record.after = record.afterImage.hash; }
+      try {
+        record.afterImage = await readImage(record.path); record.after = record.afterImage.hash;
+        // 新建文件执行前不存在，完成后补齐实际路径，后续别名写入仍归入同一条快照链。
+        if (record.after !== "missing") record.path = await realpath(record.path);
+      }
       catch (e) { record.error = e.message; }
     }
     pi.appendEntry(CHECKPOINT, { ...record, phase: "after" });
@@ -122,7 +130,9 @@ export async function checkpointPreview(files) {
 
 export function checkpointChanges(files) {
   const lines = data => data == null || data === "" ? [] : Buffer.from(data, "base64").toString("utf8").replace(/\n$/, "").split("\n");
-  const items = files.filter(f => !f.calls[0].ignored && f.calls[0].before?.hash !== f.calls.at(-1).after).map(file => {
+  const complete = image => image && (typeof image.data === "string" || (image.data === null && image.hash === "missing"));
+  // 未完成/读取失败的快照不是空文件；只能在撤销预览中报告未知，不能虚构整文件删除。
+  const items = files.filter(f => !f.calls[0].ignored && complete(f.calls[0].before) && complete(f.calls.at(-1).afterImage) && f.calls[0].before.hash !== f.calls.at(-1).after).map(file => {
     const before = lines(file.calls[0].before?.data), after = lines(file.calls.at(-1).afterImage?.data);
     let start = 0, end = 0;
     while (start < before.length && start < after.length && before[start] === after[start]) start++;
